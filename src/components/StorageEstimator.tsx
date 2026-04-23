@@ -19,17 +19,10 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
   const [videoSize, setVideoSize] = useState(0);
   const [audioSize, setAudioSize] = useState(0);
   const [selectedDrive, setSelectedDrive] = useState<string>('Local');
-  const [driveCapacity, setDriveCapacity] = useState<number>(1000); // GB
-  const [usedSpace, setUsedSpace] = useState<number>(300); // GB
+  const [driveCapacity, setDriveCapacity] = useState<number>(0); // GB
+  const [usedSpace, setUsedSpace] = useState<number>(0); // GB
   const [targetHandle, setTargetHandle] = useState<any>(null);
   const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
-
-  // Available "Drives" (Defaults)
-  const drives = [
-    { name: 'Local', capacity: 1000, used: 300 },
-    { name: 'NVMe SSD', capacity: 2000, used: 800 },
-    { name: 'Work HDD', capacity: 8000, used: 5500 },
-  ];
 
   // Bitrates in Mbps
   const bitrateMap: Record<string, number> = {
@@ -74,9 +67,11 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
 
   const bufferSize = (videoSize + audioSize) * 0.2;
   const totalRequired = usedSpace + videoSize + audioSize + bufferSize;
-  const freeSpace = Math.max(0, driveCapacity - totalRequired);
-  const isOverflow = totalRequired > driveCapacity;
-  const overflowAmount = totalRequired - driveCapacity;
+  const freeSpace = driveCapacity > 0 ? Math.max(0, driveCapacity - totalRequired) : 0;
+  const isOverflow = driveCapacity > 0 && totalRequired > driveCapacity;
+  const overflowAmount = isOverflow ? totalRequired - driveCapacity : 0;
+
+  const getRatio = (val: number) => (driveCapacity > 0 ? val / driveCapacity : 0);
 
   const [isCalculating, setIsCalculating] = useState(false);
 
@@ -217,6 +212,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                <div className="p-10 rounded-3xl h-full glass border border-[var(--border)] flex flex-col min-h-0 overflow-hidden shadow-2xl relative">
                   <div className="flex flex-col items-center justify-start space-y-12 overflow-y-auto pr-2 custom-scrollbar flex-1 relative z-10 pt-10">
                     <div className="flex flex-col items-center text-center">
+                       <p className="label-micro text-[var(--text-dim)] mb-2">Estimated Export Footprint</p>
                        <div className="flex items-baseline gap-3">
                          <span className="text-[100px] lg:text-[120px] font-black tracking-tighter text-[var(--text-main)] italic leading-none drop-shadow-2xl">{storageResult.size.toFixed(2)}</span>
                          <span className="text-3xl font-black text-[var(--accent)] uppercase italic">{storageResult.unit}</span>
@@ -224,17 +220,24 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                     </div>
 
                     <div className="relative flex items-center justify-center w-full max-w-[440px] aspect-square">
+                       {!targetHandle && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/5 backdrop-blur-[2px] rounded-full border border-dashed border-white/10 m-8">
+                           <HardDrive className="w-12 h-12 text-[var(--accent)] mb-4 opacity-40" />
+                           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-dim)]">No Drive Selected</p>
+                           <button onClick={pickTargetDir} className="mt-4 px-6 py-2 rounded-full glass border border-[var(--border)] text-[10px] font-bold uppercase tracking-widest hover:text-[var(--accent)] transition-colors">Select Target Drive</button>
+                        </div>
+                       )}
                        <svg className="w-full h-full -rotate-90" viewBox="0 0 400 400">
                          {/* All fills must be "none" to prevent the center from capturing pointer events */}
                          <circle cx="200" cy="200" r="145" fill="none" stroke="var(--border)" strokeWidth="34" className="opacity-10" />
                          
-                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--text-dim)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-(usedSpace/driveCapacity))} onMouseEnter={() => setHoveredSegment('used')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment === 'used' ? 'opacity-60 stroke-[44]' : 'opacity-20'}`} />
+                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--text-dim)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getRatio(usedSpace))} onMouseEnter={() => setHoveredSegment('used')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment === 'used' ? 'opacity-60 stroke-[44]' : 'opacity-20'}`} />
                          
-                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--accent)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-(videoSize/driveCapacity))} style={{ rotate: `${(usedSpace/driveCapacity)*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('video')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='video'?'stroke-[44]':'opacity-80'}`} />
+                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--accent)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getRatio(videoSize))} style={{ rotate: `${getRatio(usedSpace)*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('video')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='video'?'stroke-[44]':'opacity-80'}`} />
                          
-                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#f59e0b" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-(audioSize/driveCapacity))} style={{ rotate: `${((usedSpace+videoSize)/driveCapacity)*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('audio')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='audio'?'stroke-[44]':'opacity-80'}`} />
+                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#f59e0b" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getRatio(audioSize))} style={{ rotate: `${getRatio(usedSpace+videoSize)*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('audio')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='audio'?'stroke-[44]':'opacity-80'}`} />
                          
-                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#a855f7" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-(bufferSize/driveCapacity))} style={{ rotate: `${((usedSpace+videoSize+audioSize)/driveCapacity)*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('buffer')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='buffer'?'stroke-[44]':'opacity-40'}`} />
+                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#a855f7" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getRatio(bufferSize))} style={{ rotate: `${getRatio(usedSpace+videoSize+audioSize)*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('buffer')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='buffer'?'stroke-[44]':'opacity-40'}`} />
 
                          <motion.circle 
                             cx="200" cy="200" r="145" 
@@ -242,89 +245,93 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                             stroke="transparent" 
                             strokeWidth="34" 
                             strokeDasharray={2*Math.PI*145} 
-                            strokeDashoffset={(2*Math.PI*145)*(1-(freeSpace/driveCapacity))} 
-                            style={{ rotate: `${((usedSpace+videoSize+audioSize+bufferSize)/driveCapacity)*360}deg`, transformOrigin: 'center' }} 
+                            strokeDashoffset={(2*Math.PI*145)*(1-getRatio(freeSpace))} 
+                            style={{ rotate: `${getRatio(usedSpace+videoSize+audioSize+bufferSize)*360}deg`, transformOrigin: 'center' }} 
                             onMouseEnter={() => setHoveredSegment('free')} 
                             onMouseLeave={() => setHoveredSegment(null)} 
                             className="cursor-pointer" 
                           />
                        </svg>
                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                          <motion.div 
-                            className="absolute text-right"
-                            animate={{ 
-                              x: -280, 
-                              y: -120,
-                              scale: hoveredSegment === 'free' ? 1.15 : 1,
-                              opacity: (hoveredSegment && hoveredSegment !== 'free') ? 0.3 : 1
-                            }}
-                            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                          >
-                            <span className="text-[10px] uppercase font-black text-green-500 tracking-widest">Free Remaining</span>
-                            <div className="text-2xl font-black text-green-500 italic leading-none">{freeSpace.toFixed(1)} GB</div>
-                          </motion.div>
+                          {targetHandle && (
+                            <>
+                              <motion.div 
+                                className="absolute text-right"
+                                animate={{ 
+                                  x: -280, 
+                                  y: -120,
+                                  scale: hoveredSegment === 'free' ? 1.15 : 1,
+                                  opacity: (hoveredSegment && hoveredSegment !== 'free') ? 0.3 : 1
+                                }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                              >
+                                <span className="text-[10px] uppercase font-black text-green-500 tracking-widest">Free Remaining</span>
+                                <div className="text-2xl font-black text-green-500 italic leading-none">{freeSpace.toFixed(1)} GB</div>
+                              </motion.div>
 
-                          <motion.div 
-                            className="absolute text-right"
-                            animate={{ 
-                              x: -280, 
-                              y: 10,
-                              scale: hoveredSegment === 'buffer' ? 1.15 : 1,
-                              opacity: (hoveredSegment && hoveredSegment !== 'buffer') ? 0.3 : 1
-                            }}
-                            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                          >
-                            <span className="text-[10px] uppercase font-black text-purple-400 tracking-widest flex items-center justify-end gap-1">
-                              <ShieldCheck className="w-3 h-3" /> Buffer Space
-                            </span>
-                            <div className="text-2xl font-black text-purple-400 italic leading-none">{bufferSize.toFixed(1)} GB</div>
-                          </motion.div>
+                              <motion.div 
+                                className="absolute text-right"
+                                animate={{ 
+                                  x: -280, 
+                                  y: 10,
+                                  scale: hoveredSegment === 'buffer' ? 1.15 : 1,
+                                  opacity: (hoveredSegment && hoveredSegment !== 'buffer') ? 0.3 : 1
+                                }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                              >
+                                <span className="text-[10px] uppercase font-black text-purple-400 tracking-widest flex items-center justify-end gap-1">
+                                  <ShieldCheck className="w-3 h-3" /> Buffer Space
+                                </span>
+                                <div className="text-2xl font-black text-purple-400 italic leading-none">{bufferSize.toFixed(1)} GB</div>
+                              </motion.div>
 
-                          <motion.div 
-                            className="absolute text-left"
-                            animate={{ 
-                              x: 280, 
-                              y: -120,
-                              scale: hoveredSegment === 'used' ? 1.15 : 1,
-                              opacity: (hoveredSegment && hoveredSegment !== 'used') ? 0.3 : 1
-                            }}
-                            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                          >
-                            <span className="text-[10px] uppercase font-black text-[var(--text-dim)] tracking-widest">Drive Used</span>
-                            <div className="text-2xl font-black text-[var(--text-dim)] italic leading-none">{usedSpace.toFixed(1)} GB</div>
-                          </motion.div>
+                              <motion.div 
+                                className="absolute text-left"
+                                animate={{ 
+                                  x: 280, 
+                                  y: -120,
+                                  scale: hoveredSegment === 'used' ? 1.15 : 1,
+                                  opacity: (hoveredSegment && hoveredSegment !== 'used') ? 0.3 : 1
+                                }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                              >
+                                <span className="text-[10px] uppercase font-black text-[var(--text-dim)] tracking-widest">Drive Used</span>
+                                <div className="text-2xl font-black text-[var(--text-dim)] italic leading-none">{usedSpace.toFixed(1)} GB</div>
+                              </motion.div>
 
-                          <motion.div 
-                            className="absolute text-left"
-                            animate={{ 
-                              x: 280, 
-                              y: 10,
-                              scale: hoveredSegment === 'video' ? 1.15 : 1,
-                              opacity: (hoveredSegment && hoveredSegment !== 'video') ? 0.3 : 1
-                            }}
-                            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                          >
-                            <span className="text-[10px] uppercase font-black text-[var(--accent)] tracking-widest flex items-center gap-1">
-                              <Video className="w-3 h-3" /> Video Size
-                            </span>
-                            <div className="text-2xl font-black text-[var(--accent)] italic leading-none">{videoSize.toFixed(1)} GB</div>
-                          </motion.div>
+                              <motion.div 
+                                className="absolute text-left"
+                                animate={{ 
+                                  x: 280, 
+                                  y: 10,
+                                  scale: hoveredSegment === 'video' ? 1.15 : 1,
+                                  opacity: (hoveredSegment && hoveredSegment !== 'video') ? 0.3 : 1
+                                }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                              >
+                                <span className="text-[10px] uppercase font-black text-[var(--accent)] tracking-widest flex items-center gap-1">
+                                  <Video className="w-3 h-3" /> Video Size
+                                </span>
+                                <div className="text-2xl font-black text-[var(--accent)] italic leading-none">{videoSize.toFixed(1)} GB</div>
+                              </motion.div>
 
-                          <motion.div 
-                            className="absolute text-left"
-                            animate={{ 
-                              x: 280, 
-                              y: 110,
-                              scale: hoveredSegment === 'audio' ? 1.15 : 1,
-                              opacity: (hoveredSegment && hoveredSegment !== 'audio') ? 0.3 : 1
-                            }}
-                            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                          >
-                            <span className="text-[10px] uppercase font-black text-amber-500 tracking-widest flex items-center gap-1">
-                              <Music className="w-3 h-3" /> Audio Size
-                            </span>
-                            <div className="text-2xl font-black text-amber-500 italic leading-none">{audioSize.toFixed(1)} GB</div>
-                          </motion.div>
+                              <motion.div 
+                                className="absolute text-left"
+                                animate={{ 
+                                  x: 280, 
+                                  y: 110,
+                                  scale: hoveredSegment === 'audio' ? 1.15 : 1,
+                                  opacity: (hoveredSegment && hoveredSegment !== 'audio') ? 0.3 : 1
+                                }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                              >
+                                <span className="text-[10px] uppercase font-black text-amber-500 tracking-widest flex items-center gap-1">
+                                  <Music className="w-3 h-3" /> Audio Size
+                                </span>
+                                <div className="text-2xl font-black text-amber-500 italic leading-none">{audioSize.toFixed(1)} GB</div>
+                              </motion.div>
+                            </>
+                          )}
                        </div>
                     </div>
                   </div>
