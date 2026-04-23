@@ -24,42 +24,64 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
   const [targetHandle, setTargetHandle] = useState<any>(null);
   const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
 
-  // Bitrates in Mbps
+  // Bitrates in Mbps at 4K 24p (Standardized)
   const bitrateMap: Record<string, number> = {
-    'ProRes 4444 XQ': 1697, 'ProRes 4444': 1131, 'ProRes 422 HQ': 754, 'ProRes 422': 503,
-    'ProRes 422 LT': 352, 'ProRes 422 Proxy': 156, 'DNxHR 444': 1130, 'DNxHR HQX': 750,
-    'H.264 (High)': 100, 'H.265 (High)': 60, 'ARRIRAW 3.4K': 2400, 'REDCODE 8:1': 800,
-    'REDCODE 5:1': 1200, 'XAVC-I 4K': 240,
+    'ProRes 4444 XQ': 1697, 
+    'ProRes 4444': 1131, 
+    'ProRes 422 HQ': 707, 
+    'ProRes 422': 471,
+    'ProRes 422 LT': 330, 
+    'ProRes 422 Proxy': 147, 
+    'DNxHR 444': 1130, 
+    'DNxHR HQX': 710,
+    'H.264 (High)': 100, 
+    'H.265 (High)': 60, 
+    'ARRIRAW 3.4K': 1800, 
+    'REDCODE 8:1': 800,
+    'REDCODE 5:1': 1200, 
+    'XAVC-I 4K': 240,
   };
 
   const audioBitrates: Record<string, number> = {
-    'PCM 32-bit float 48kHz': 1.536, 'PCM 24-bit 48kHz': 1.152, 'PCM 16-bit 48kHz': 0.768,
-    'AAC 320kbps': 0.32, 'MP3 320kbps': 0.32, 'FLAC Lossless': 0.8,
+    'PCM 32-bit float 48kHz': 1.536, 
+    'PCM 24-bit 48kHz': 1.152, 
+    'PCM 16-bit 48kHz': 0.768,
+    'AAC 320kbps': 0.32, 
+    'MP3 320kbps': 0.32, 
+    'FLAC Lossless': 0.8,
   };
 
   useEffect(() => {
     const baseBitrate = bitrateMap[format] || 500;
-    let resolutionMultiplier = 1;
-    if (resolution.includes('HD')) resolutionMultiplier = 0.25;
-    else if (resolution.includes('2K')) resolutionMultiplier = 0.3;
-    else if (resolution.includes('6K')) resolutionMultiplier = 2.25;
-    else if (resolution.includes('8K')) resolutionMultiplier = 4;
+    
+    // Precise Resolution Scaling (Targeting 4K as 1.0)
+    let resScale = 1;
+    if (resolution.includes('HD')) resScale = (1920 * 1080) / (3840 * 2160); // 0.25
+    else if (resolution.includes('2K')) resScale = (2048 * 1080) / (3840 * 2160); // ~0.26
+    else if (resolution.includes('6K')) resScale = (6144 * 3160) / (3840 * 2160); // ~2.34
+    else if (resolution.includes('8K')) resScale = (7680 * 4320) / (3840 * 2160); // 4.0
     
     const frameRateMultiplier = frameRate / 24;
     const singleChannelAudioMbps = audioBitrates[audioCodec] || 1.152;
-    const OVERHEAD = 1.07;
-    const rawVideoBitrateMbps = includeVideo ? (baseBitrate * resolutionMultiplier * frameRateMultiplier) : 0;
-    const audioBitrateMbps = includeAudio ? (audioChannels * singleChannelAudioMbps) : 0;
-    const finalBitrateMbps = (rawVideoBitrateMbps + audioBitrateMbps) * OVERHEAD;
-    const totalSeconds = (duration.hours * 3600) + (duration.minutes * 60) + duration.seconds;
-    const totalMegabits = finalBitrateMbps * totalSeconds;
-    const totalGB = (totalMegabits / 8) / 1024;
     
-    setVideoSize(((rawVideoBitrateMbps * OVERHEAD) * totalSeconds / 8) / 1024);
-    setAudioSize(((audioBitrateMbps * OVERHEAD) * totalSeconds / 8) / 1024);
+    // Standard File System Overhead (Approx 3%)
+    const OVERHEAD = 1.03;
+    
+    const rawVideoBitrateMbps = includeVideo ? (baseBitrate * resScale * frameRateMultiplier) : 0;
+    const audioBitrateMbps = includeAudio ? (audioChannels * singleChannelAudioMbps) : 0;
+    
+    const totalSeconds = (duration.hours * 3600) + (duration.minutes * 60) + duration.seconds;
+    
+    // Decimal GB Calculation (10^9 bits to GB)
+    const videoGB = ((rawVideoBitrateMbps * totalSeconds) / 8) / 1000;
+    const audioGB = ((audioBitrateMbps * totalSeconds) / 8) / 1000;
+    const totalGB = (videoGB + audioGB) * OVERHEAD;
+    
+    setVideoSize(videoGB * OVERHEAD);
+    setAudioSize(audioGB * OVERHEAD);
     
     if (totalGB >= 1000) {
-      setStorageResult({ size: totalGB / 1024, unit: 'TB' });
+      setStorageResult({ size: totalGB / 1000, unit: 'TB' });
     } else {
       setStorageResult({ size: totalGB, unit: 'GB' });
     }
@@ -95,12 +117,18 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
       setTargetHandle(handle);
       setIsCalculating(true);
       const totalBytes = await calculateFolderSize(handle);
-      const totalGB = totalBytes / (1024 ** 3);
+      const totalGB = totalBytes / (1000 ** 3); // Decimal GB from folder scan
       setUsedSpace(totalGB);
-      if (totalGB < 450) setDriveCapacity(500);
-      else if (totalGB < 900) setDriveCapacity(1000);
-      else if (totalGB < 1800) setDriveCapacity(2000);
+      
+      // Better heuristic for drive capacity
+      if (totalGB < 118) setDriveCapacity(128);
+      else if (totalGB < 235) setDriveCapacity(256);
+      else if (totalGB < 470) setDriveCapacity(512);
+      else if (totalGB < 940) setDriveCapacity(1000);
+      else if (totalGB < 1880) setDriveCapacity(2000);
+      else if (totalGB < 3760) setDriveCapacity(4000);
       else setDriveCapacity(Math.ceil(totalGB / 1000) * 1000);
+      
       setIsCalculating(false);
     } catch (err) { setIsCalculating(false); }
   };
@@ -295,6 +323,21 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                                 }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                               >
+                                <div className="flex flex-col">
+                                  <span className="text-[10px] uppercase font-black text-[var(--text-dim)] tracking-widest leading-none">Drive Capacity</span>
+                                  <select 
+                                    value={driveCapacity} 
+                                    onChange={(e) => setDriveCapacity(Number(e.target.value))}
+                                    className="bg-transparent border-none text-xs font-bold text-[var(--text-dim)] cursor-pointer outline-none mb-2 hover:text-[var(--accent)] transition-colors p-0 decoration-dotted underline"
+                                  >
+                                    {[128, 256, 512, 1000, 2000, 4000, 8000, 16000, 32000].map(c => (
+                                      <option key={c} value={c} className="bg-[#111] text-white">{(c >= 1000 ? c/1000 : c) + (c >= 1000 ? ' TB' : ' GB')}</option>
+                                    ))}
+                                    {![128, 256, 512, 1000, 2000, 4000, 8000, 16000, 32000].includes(driveCapacity) && (
+                                       <option value={driveCapacity}>{driveCapacity >= 1000 ? (driveCapacity/1000).toFixed(1) + ' TB' : driveCapacity.toFixed(1) + ' GB'}</option>
+                                    )}
+                                  </select>
+                                </div>
                                 <span className="text-[10px] uppercase font-black text-[var(--text-dim)] tracking-widest">Drive Used</span>
                                 <div className="text-2xl font-black text-[var(--text-dim)] italic leading-none">{usedSpace.toFixed(1)} GB</div>
                               </motion.div>
