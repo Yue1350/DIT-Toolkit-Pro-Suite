@@ -17,6 +17,7 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0].replace(/-/g, ''));
   const [day, setDay] = useState('01');
+  const [unit, setUnit] = useState('MAIN');
   const [category, setCategory] = useState('CAMERA');
   const [camId, setCamId] = useState('A');
   const [roll, setRoll] = useState('001');
@@ -35,9 +36,9 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
 
   const getSubFolders = (cat: string) => {
     switch (cat) {
-      case 'CAMERA': 
-      case 'SOUND': 
-      case 'PROXY': 
+      case 'CAMERA': return ['OCF', 'REPORTS'];
+      case 'SOUND': return ['WAV', 'REPORTS'];
+      case 'PROXY': return ['MOV', 'REPORTS'];
       default: return [];
     }
   };
@@ -87,18 +88,19 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
     if (!project) return;
     setError(null);
     
-    // YYYYMMDD_DAY001 format
-    const dayTag = `${date}_DAY${day.padStart(3, '0')}`;
-    const rollLevel = `R#${roll}`;
+    // Netflix Guideline: YYYYMMDD_D## (Example: 20240101_D01)
+    const dayTag = `${date}_D${day.padStart(2, '0')}`;
     
-    let path: string[] = [project, dayTag, category, rollLevel];
+    // Netflix Guideline: Camera Level (Example: A_CAM)
+    const categoryTag = category === 'CAMERA' ? `${camId}_CAM` : category;
     
-    // Add specific sub-roll tags
-    if (category === 'CAMERA' || category === 'PROXY') {
-      path.push(`${camId}R${roll}`);
-    } else if (category === 'SOUND') {
-      path.push(`SR${roll}`);
-    }
+    // Netflix Guideline: Roll ID (Example: A001)
+    const rollId = category === 'CAMERA' ? `${camId}${roll.padStart(3, '0')}` : 
+                   category === 'SOUND' ? `S${roll.padStart(3, '0')}` : 
+                   `P${roll.padStart(3, '0')}`;
+    
+    // Hierarchy: Project / Day / Unit / Camera_or_Sound / Roll_ID
+    let basePath: string[] = [project, dayTag, `${unit}_UNIT`, categoryTag, rollId];
     
     const subs = getSubFolders(category);
     
@@ -106,12 +108,12 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
     let addedAny = false;
     
     if (subs.length === 0) {
-      const { nodes, added } = insertPath(tempStructure, path);
+      const { nodes, added } = insertPath(tempStructure, basePath);
       tempStructure = nodes;
       addedAny = added;
     } else {
       for (const sub of subs) {
-        const fullPath = [...path, sub];
+        const fullPath = [...basePath, sub];
         const { nodes, added } = insertPath(tempStructure, fullPath);
         tempStructure = nodes;
         if (added) addedAny = true;
@@ -119,7 +121,7 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
     }
     
     if (!addedAny) {
-      setError(`Duplicate structure found for ${path.join('/')}`);
+      setError(`Duplicate structure found for ${basePath.join('/')}`);
     } else {
       setPreviewStructure(tempStructure);
       // Auto-increment for next roll
@@ -453,23 +455,36 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="label-micro flex items-center gap-2">
-                    <FileCode className="w-3 h-3" /> Category Selector
-                  </label>
-                  <div className="relative group">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="label-micro flex items-center gap-2">
+                      <Layers className="w-3 h-3" /> Unit
+                    </label>
+                    <select 
+                      value={unit} 
+                      onChange={e => setUnit(e.target.value)}
+                      className="tech-input w-full rounded-xl appearance-none cursor-pointer pr-10"
+                    >
+                      <option value="MAIN">MAIN</option>
+                      <option value="2ND">2ND</option>
+                      <option value="SPLINTER">SPLINTER</option>
+                      <option value="AERIAL">AERIAL</option>
+                      <option value="UNDERWATER">UNDERWATER</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="label-micro flex items-center gap-2">
+                      <FileCode className="w-3 h-3" /> Category
+                    </label>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="tech-input w-full appearance-none cursor-pointer rounded-xl bg-[var(--bg-input)] border-[var(--border)] pr-10 focus:ring-2 focus:ring-[var(--accent)]/20 transition-all font-bold tracking-widest text-[10px]"
+                      className="tech-input w-full rounded-xl appearance-none cursor-pointer pr-10"
                     >
                       <option value="CAMERA">CAMERA</option>
                       <option value="SOUND">SOUND</option>
                       <option value="PROXY">PROXY</option>
                     </select>
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--accent)]">
-                      <ChevronDown className="w-4 h-4" />
-                    </div>
                   </div>
                 </div>
 

@@ -7,14 +7,14 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Storage Estimator State
-  const [format, setFormat] = useState('ProRes 422 HQ');
-  const [resolution, setResolution] = useState('4K (3840x2160)');
-  const [frameRate, setFrameRate] = useState(24);
-  const [audioCodec, setAudioCodec] = useState('PCM 24-bit 48kHz');
+  const [format, setFormat] = useState('');
+  const [resolution, setResolution] = useState('');
+  const [frameRate, setFrameRate] = useState(0);
+  const [audioCodec, setAudioCodec] = useState('');
   const [audioChannels, setAudioChannels] = useState(2);
-  const [duration, setDuration] = useState({ hours: 1, minutes: 0, seconds: 0 });
-  const [includeVideo, setIncludeVideo] = useState(true);
-  const [includeAudio, setIncludeAudio] = useState(true);
+  const [duration, setDuration] = useState({ hours: 0, minutes: 0, seconds: 0 });
+  const [includeVideo, setIncludeVideo] = useState(false);
+  const [includeAudio, setIncludeAudio] = useState(false);
   const [storageResult, setStorageResult] = useState({ size: 0, unit: 'GB' });
   const [videoSize, setVideoSize] = useState(0);
   const [audioSize, setAudioSize] = useState(0);
@@ -52,15 +52,29 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
   };
 
   useEffect(() => {
-    const baseBitrate = bitrateMap[format] || 500;
+    const baseBitrate = bitrateMap[format];
+    if (!baseBitrate) {
+      setVideoSize(0);
+      setAudioSize(0);
+      setStorageResult({ size: 0, unit: 'GB' });
+      return;
+    }
     
     // Precise Resolution Scaling (Targeting 4K as 1.0)
-    let resScale = 1;
+    let resScale = 0;
     if (resolution.includes('HD')) resScale = (1920 * 1080) / (3840 * 2160); // 0.25
     else if (resolution.includes('2K')) resScale = (2048 * 1080) / (3840 * 2160); // ~0.26
+    else if (resolution.includes('4K')) resScale = 1;
     else if (resolution.includes('6K')) resScale = (6144 * 3160) / (3840 * 2160); // ~2.34
     else if (resolution.includes('8K')) resScale = (7680 * 4320) / (3840 * 2160); // 4.0
     
+    if (resScale === 0 || frameRate === 0) {
+      setVideoSize(0);
+      setAudioSize(0);
+      setStorageResult({ size: 0, unit: 'GB' });
+      return;
+    }
+
     const frameRateMultiplier = frameRate / 24;
     const singleChannelAudioMbps = audioBitrates[audioCodec] || 1.152;
     
@@ -177,6 +191,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                       <div className="space-y-2">
                         <label className="label-micro">Video Codec</label>
                         <select value={format} onChange={e => setFormat(e.target.value)} className="tech-input w-full rounded-xl">
+                          <option value="" disabled>Select Video Codec...</option>
                           {Object.keys(bitrateMap).map(c => <option key={c}>{c}</option>)}
                         </select>
                       </div>
@@ -184,13 +199,15 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                         <div className="space-y-2">
                           <label className="label-micro">Resolution</label>
                           <select value={resolution} onChange={e => setResolution(e.target.value)} className="tech-input w-full rounded-xl">
+                             <option value="" disabled>Select...</option>
                              <option>HD (1920x1080)</option><option>4K (3840x2160)</option><option>8K (7680x4320)</option>
                           </select>
                         </div>
                         <div className="space-y-2">
                           <label className="label-micro">FPS</label>
                           <select value={frameRate} onChange={e => setFrameRate(Number(e.target.value))} className="tech-input w-full rounded-xl">
-                            {[24, 30, 60].map(f => <option key={f} value={f}>{f} fps</option>)}
+                            <option value={0} disabled>Select...</option>
+                            {[23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120].map(f => <option key={f} value={f}>{f} fps</option>)}
                           </select>
                         </div>
                       </div>
@@ -200,6 +217,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                       <div className="space-y-2">
                         <label className="label-micro">Audio Codec</label>
                         <select value={audioCodec} onChange={e => setAudioCodec(e.target.value)} className="tech-input w-full rounded-xl">
+                          <option value="" disabled>Select Audio Codec...</option>
                           {Object.keys(audioBitrates).map(c => <option key={c}>{c}</option>)}
                         </select>
                       </div>
@@ -216,10 +234,19 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
 
                     <div className="space-y-6 pt-6 border-t border-white/5">
                       <label className="label-micro flex items-center gap-2"><Clock className="w-3 h-3" /> Capture Duration</label>
-                      <div className="grid grid-cols-3 gap-4">
-                        <input type="number" value={duration.hours} onChange={e => setDuration({...duration, hours: Number(e.target.value)})} className="tech-input text-center rounded-xl" />
-                        <input type="number" value={duration.minutes} onChange={e => setDuration({...duration, minutes: Number(e.target.value)})} className="tech-input text-center rounded-xl" />
-                        <input type="number" value={duration.seconds} onChange={e => setDuration({...duration, seconds: Number(e.target.value)})} className="tech-input text-center rounded-xl" />
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <input type="number" min="0" value={duration.hours} onChange={e => setDuration({...duration, hours: Number(e.target.value)})} className="tech-input text-center rounded-xl w-full" />
+                          <p className="text-[9px] font-black text-center text-[var(--text-dim)] uppercase tracking-widest">Hrs</p>
+                        </div>
+                        <div className="space-y-1">
+                          <input type="number" min="0" max="59" value={duration.minutes} onChange={e => setDuration({...duration, minutes: Number(e.target.value)})} className="tech-input text-center rounded-xl w-full" />
+                          <p className="text-[9px] font-black text-center text-[var(--text-dim)] uppercase tracking-widest">Min</p>
+                        </div>
+                        <div className="space-y-1">
+                          <input type="number" min="0" max="59" value={duration.seconds} onChange={e => setDuration({...duration, seconds: Number(e.target.value)})} className="tech-input text-center rounded-xl w-full" />
+                          <p className="text-[9px] font-black text-center text-[var(--text-dim)] uppercase tracking-widest">Sec</p>
+                        </div>
                       </div>
                     </div>
                   </div>
