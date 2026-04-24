@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { HardDrive, Sun, Moon, LayoutDashboard, Calculator, ArrowRight, Info, AlertCircle, Clock, Zap, Video, Gauge, Music, FolderTree, Plus, ShieldCheck } from 'lucide-react';
+import { HardDrive, Sun, Moon, LayoutDashboard, AlertCircle, Clock, Video, Music, ShieldCheck } from 'lucide-react';
 import ToolSidebar from './ToolSidebar';
 
 export default function StorageEstimator({ setPage, isDark, toggleTheme }: { setPage: (p: string) => void, isDark?: boolean, toggleTheme?: () => void }) {
@@ -21,11 +21,20 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
   const [selectedDrive, setSelectedDrive] = useState<string>('Local');
   const [driveCapacity, setDriveCapacity] = useState<number>(0); // GB
   const [usedSpace, setUsedSpace] = useState<number>(0); // GB
-  const [targetHandle, setTargetHandle] = useState<any>(null);
+  const [targetDriveName, setTargetDriveName] = useState<string | null>(null);
   const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
 
+  const [pendingType, setPendingType] = useState('SSD');
+  const [pendingCapacity, setPendingCapacity] = useState(1000);
+
+  const selectPreset = (name: string, capacity: number) => {
+    setTargetDriveName(name);
+    setDriveCapacity(capacity);
+    setUsedSpace(0);
+  };
+
   const resetDrive = () => {
-    setTargetHandle(null);
+    setTargetDriveName(null);
     setUsedSpace(0);
     setDriveCapacity(0);
   };
@@ -118,44 +127,6 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
   const overflowAmount = isOverflow ? totalRequired - driveCapacity : 0;
 
   const getRatio = (val: number) => (totalRequired > 0 || usedSpace > 0 ? val / visCapacity : 0);
-
-  const [isCalculating, setIsCalculating] = useState(false);
-
-  const calculateFolderSize = async (dirHandle: FileSystemDirectoryHandle): Promise<number> => {
-    let size = 0;
-    try {
-      // @ts-ignore
-      for await (const entry of dirHandle.values()) {
-        if (entry.kind === 'file') size += (await entry.getFile()).size;
-        else if (entry.kind === 'directory') size += await calculateFolderSize(entry);
-      }
-    } catch (e) { console.warn('Access error'); }
-    return size;
-  };
-
-  const pickTargetDir = async () => {
-    if (!('showDirectoryPicker' in window)) return;
-    try {
-      // @ts-ignore
-      const handle = await window.showDirectoryPicker();
-      setTargetHandle(handle);
-      setIsCalculating(true);
-      const totalBytes = await calculateFolderSize(handle);
-      const totalGB = totalBytes / (1000 ** 3); // Decimal GB from folder scan
-      setUsedSpace(totalGB);
-      
-      // Better heuristic for drive capacity
-      if (totalGB < 118) setDriveCapacity(128);
-      else if (totalGB < 235) setDriveCapacity(256);
-      else if (totalGB < 470) setDriveCapacity(512);
-      else if (totalGB < 940) setDriveCapacity(1000);
-      else if (totalGB < 1880) setDriveCapacity(2000);
-      else if (totalGB < 3760) setDriveCapacity(4000);
-      else setDriveCapacity(Math.ceil(totalGB / 1000) * 1000);
-      
-      setIsCalculating(false);
-    } catch (err) { setIsCalculating(false); }
-  };
 
   return (
     <div className="flex flex-col h-full apple-gradient overflow-hidden relative">
@@ -261,25 +232,6 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                       </div>
                     </div>
                   </div>
-
-                  <div className="mt-auto pt-6 border-t border-white/5 flex gap-2">
-                    <button onClick={pickTargetDir} disabled={isCalculating} className={`flex-1 py-4 px-5 rounded-2xl border flex items-center justify-between text-[11px] transition-all ${targetHandle ? 'bg-[var(--accent)] text-white' : 'bg-white/5 text-[var(--text-dim)] border-white/10'}`}>
-                      <div className="flex items-center gap-3 truncate">
-                        <FolderTree className={`w-4 h-4 ${isCalculating ? 'animate-bounce' : ''}`} />
-                        <span>{isCalculating ? 'Scanning...' : (targetHandle ? targetHandle.name : 'Choose Drive Path...')}</span>
-                      </div>
-                      <Plus className="w-4 h-4" />
-                    </button>
-                    {targetHandle && (
-                      <button 
-                        onClick={resetDrive}
-                        className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-all shadow-lg shadow-red-500/5 group"
-                        title="Remove Drive"
-                      >
-                        <AlertCircle className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                      </button>
-                    )}
-                  </div>
                </div>
             </div>
 
@@ -296,8 +248,8 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
 
                     <div className="flex flex-col xl:flex-row items-center justify-center gap-16 lg:gap-24 w-full max-w-7xl mx-auto px-10">
                        {/* Left Side Labels */}
-                       <div className="hidden xl:flex flex-col items-start gap-16 w-[220px] shrink-0 pointer-events-none">
-                          {targetHandle && freeSpace > 0 && (
+                       <div className="hidden xl:flex flex-col items-start gap-12 w-[220px] shrink-0 pointer-events-none">
+                          {targetDriveName && freeSpace > 0 && (
                             <motion.div 
                               animate={{ 
                                 scale: hoveredSegment === 'free' ? 1.15 : 1,
@@ -328,12 +280,48 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                           )}
                        </div>
 
-                       <div className="relative flex items-center justify-center w-full max-w-[380px] lg:max-w-[440px] aspect-square shrink-0">
-                          {!targetHandle ? (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/5 backdrop-blur-[2px] rounded-full border border-dashed border-white/10 m-8">
-                               <HardDrive className="w-12 h-12 text-[var(--accent)] mb-4 opacity-40" />
-                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-dim)]">No Drive Selected</p>
-                               <button onClick={pickTargetDir} className="mt-4 px-6 py-2 rounded-full glass border border-[var(--border)] text-[10px] font-bold uppercase tracking-widest hover:text-[var(--accent)] transition-colors">Select Target Drive</button>
+                        <div className="relative flex items-center justify-center w-full max-w-[380px] lg:max-w-[440px] aspect-square shrink-0">
+                            {!targetDriveName ? (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/5 backdrop-blur-[4px] rounded-full border border-dashed border-white/10 m-8 sm:m-12 overflow-hidden p-6 px-10">
+                               <div className="flex flex-col gap-2 w-full max-w-[160px]">
+                                 <div className="space-y-1">
+                                   <select 
+                                     value={pendingType} 
+                                     onChange={e => setPendingType(e.target.value)}
+                                     className="w-full text-[10px] h-9 rounded-xl bg-black/60 border border-white/10 px-3 text-white font-mono appearance-none cursor-pointer hover:border-[var(--accent)] transition-all outline-none"
+                                   >
+                                     <option>SSD</option>
+                                     <option>NVMe</option>
+                                     <option>RAID 0</option>
+                                     <option>RAID 5</option>
+                                     <option>Card / Media</option>
+                                     <option>Cloud</option>
+                                   </select>
+                                 </div>
+                                 <div className="space-y-1">
+                                   <select 
+                                     value={pendingCapacity} 
+                                     onChange={e => setPendingCapacity(Number(e.target.value))}
+                                     className="w-full text-[10px] h-9 rounded-xl bg-black/60 border border-white/10 px-3 text-white font-mono appearance-none cursor-pointer hover:border-[var(--accent)] transition-all outline-none"
+                                   >
+                                     <option value={128}>128 GB</option>
+                                     <option value={256}>256 GB</option>
+                                     <option value={512}>512 GB</option>
+                                     <option value={1000}>1 TB</option>
+                                     <option value={2000}>2 TB</option>
+                                     <option value={4000}>4 TB</option>
+                                     <option value={8000}>8 TB</option>
+                                     <option value={16000}>16 TB</option>
+                                     <option value={32000}>32 TB</option>
+                                   </select>
+                                 </div>
+                                 <button 
+                                   onClick={() => selectPreset(`${pendingType} ${pendingCapacity >= 1000 ? (pendingCapacity/1000) + 'TB' : pendingCapacity + 'GB'}`, pendingCapacity)}
+                                   className="w-full mt-1 h-9 rounded-xl bg-[var(--accent)] text-white text-[9px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-xl border border-white/10"
+                                 >
+                                   Initialize
+                                 </button>
+                               </div>
                             </div>
                           ) : (
                             <div className="absolute inset-0 flex flex-col items-center justify-center z-20 m-8 pointer-events-none">
@@ -343,10 +331,16 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                                  className="flex flex-col items-center"
                                >
                                  <HardDrive className="w-12 h-12 text-[var(--accent)] mb-3 drop-shadow-[0_0_15px_rgba(var(--accent-rgb),0.3)]" />
-                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-main)] max-w-[120px] text-center truncate">{targetHandle.name}</p>
+                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-main)] max-w-[120px] text-center truncate">{targetDriveName}</p>
+                                 <button 
+                                   onClick={resetDrive}
+                                   className="mt-3 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-[8px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/20 transition-all pointer-events-auto"
+                                 >
+                                   Remove
+                                 </button>
                                </motion.div>
                             </div>
-                          )}
+                          ) }
                           <svg className="w-full h-full -rotate-90" viewBox="0 0 400 400">
                             {/* All fills must be "none" to prevent the center from capturing pointer events */}
                             <circle cx="200" cy="200" r="145" fill="none" stroke="var(--border)" strokeWidth="34" className="opacity-10" />
@@ -419,7 +413,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
 
                        {/* Right Side Labels */}
                        <div className="hidden xl:flex flex-col items-end gap-16 w-[220px] shrink-0 pointer-events-none">
-                          {(targetHandle || usedSpace > 0) && (
+                          {(targetDriveName || usedSpace > 0) && (
                             <motion.div 
                               animate={{ 
                                 scale: hoveredSegment === 'used' ? 1.15 : 1,
@@ -428,11 +422,11 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                             >
                               <div className="flex flex-col items-end">
                                 <span className="text-[10px] uppercase font-black text-[var(--text-dim)] tracking-widest leading-none">Drive Capacity</span>
-                                {targetHandle ? (
+                                {targetDriveName ? (
                                   <select 
                                     value={driveCapacity} 
                                     onChange={(e) => setDriveCapacity(Number(e.target.value))}
-                                    className="bg-transparent border-none text-xs font-bold text-[var(--text-dim)] cursor-pointer outline-none mb-1 hover:text-[var(--accent)] transition-colors p-0 decoration-dotted underline text-right"
+                                    className="bg-transparent border-none text-xs font-bold text-[var(--text-dim)] cursor-pointer outline-none mb-1 hover:text-[var(--accent)] transition-colors p-0 decoration-dotted underline text-right pointer-events-auto"
                                   >
                                     {[128, 256, 512, 1000, 2000, 4000, 8000, 16000, 32000].map(c => (
                                       <option key={c} value={c} className="bg-[#111] text-white">{(c >= 1000 ? c/1000 : c) + (c >= 1000 ? ' TB' : ' GB')}</option>
@@ -485,7 +479,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
 
                        {/* Mobile/Compact Grid Legend */}
                        <div className="xl:hidden grid grid-cols-2 gap-x-12 gap-y-8 mt-4 w-full">
-                          {targetHandle && freeSpace > 0 && (
+                          {targetDriveName && freeSpace > 0 && (
                             <div className="flex flex-col">
                               <span className={`text-[10px] uppercase font-black tracking-widest ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
                                 Free Capacity
