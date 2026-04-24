@@ -14,10 +14,11 @@ interface FolderNode {
 
 export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setPage: (p: string) => void, isDark?: boolean, toggleTheme?: () => void }) {
   const [project, setProject] = useState('');
+  const [episode, setEpisode] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0].replace(/-/g, ''));
-  const [day, setDay] = useState('01');
-  const [unit, setUnit] = useState('MAIN');
+  const [day, setDay] = useState('Day01');
+  const [unit, setUnit] = useState('MU');
   const [category, setCategory] = useState('CAMERA');
   const [camId, setCamId] = useState('A');
   const [roll, setRoll] = useState('001');
@@ -36,8 +37,8 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
 
   const getSubFolders = (cat: string) => {
     switch (cat) {
-      case 'CAMERA': return ['OCF', 'REPORTS'];
-      case 'SOUND': return ['WAV', 'REPORTS'];
+      case 'CAMERA': return ['OCF', 'REPORTS', 'MHL'];
+      case 'SOUND': return ['WAV', 'REPORTS', 'MHL'];
       case 'PROXY': return ['MOV', 'REPORTS'];
       default: return [];
     }
@@ -61,8 +62,8 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
       if (!result.added) return { nodes, added: false };
       
       const newNodes = [...nodes];
-      // Expand project/day levels, but potentially keep rolls collapsed
-      const shouldCollapse = depth >= 4;
+      // Expand root and second level, collapse below rolls (Roll is level 2)
+      const shouldCollapse = depth >= 2;
       newNodes[existingNodeIndex] = { 
         ...existingNode, 
         children: sortNodes(result.nodes),
@@ -75,8 +76,8 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
         return {
           id: Math.random().toString(36).substr(2, 9),
           name,
-          // Collapse rolls and everything below by default
-          isExpanded: currentDepth < 4,
+          // Expand first few levels by default
+          isExpanded: (depth + currentDepth) < 2,
           children: remaining.length > 0 ? sortNodes([createBranch(remaining, currentDepth + 1)]) : []
         };
       };
@@ -85,26 +86,45 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
   };
 
   const addToPreview = () => {
-    if (!project) return;
+    if (!date || !day || !unit) {
+      setError('Date, Day, and Unit are required.');
+      return;
+    }
     setError(null);
     
-    // Netflix Guideline: YYYYMMDD_D## (Example: 20240101_D01)
-    const dayTag = `${date}_D${day.padStart(2, '0')}`;
-    
-    // Netflix Guideline: Camera Level (Example: A_CAM)
-    const categoryTag = category === 'CAMERA' ? `${camId}_CAM` : category;
-    
-    // Netflix Guideline: Roll ID (Example: A001)
-    const rollId = category === 'CAMERA' ? `${camId}${roll.padStart(3, '0')}` : 
-                   category === 'SOUND' ? `S${roll.padStart(3, '0')}` : 
-                   `P${roll.padStart(3, '0')}`;
-    
-    // Hierarchy: Project / Day / Unit / Camera_or_Sound / Roll_ID
-    let basePath: string[] = [project, dayTag, `${unit}_UNIT`, categoryTag, rollId];
-    
-    const subs = getSubFolders(category);
+    // Netflix Guideline Root: YYYYMMDD_EP###_Day##_Unit
+    // Feature films omit EP field
+    const rootName = [
+      date,
+      episode.trim(),
+      day.trim(),
+      unit.trim()
+    ].filter(Boolean).join('_');
     
     let tempStructure = [...previewStructure];
+    
+    // 1. Ensure "Reports" folder exists at root
+    const { nodes: withReports } = insertPath(tempStructure, [rootName, 'Reports']);
+    tempStructure = withReports;
+
+    // 2. Determine Media Path
+    let mediaTypeFolder = '';
+    let rollId = '';
+    
+    if (category === 'CAMERA') {
+      mediaTypeFolder = 'Camera_Media';
+      rollId = `${camId}${roll.padStart(3, '0')}`;
+    } else if (category === 'SOUND') {
+      mediaTypeFolder = 'Sound_Media';
+      rollId = `S${roll.padStart(3, '0')}`;
+    } else {
+      mediaTypeFolder = 'Proxy_Media';
+      rollId = `P${roll.padStart(3, '0')}`;
+    }
+
+    const basePath = [rootName, mediaTypeFolder, rollId];
+    const subs = getSubFolders(category);
+    
     let addedAny = false;
     
     if (subs.length === 0) {
@@ -121,7 +141,7 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
     }
     
     if (!addedAny) {
-      setError(`Duplicate structure found for ${basePath.join('/')}`);
+      setError(`Duplicate structure found for ${rollId}`);
     } else {
       setPreviewStructure(tempStructure);
       // Auto-increment for next roll
@@ -443,19 +463,40 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="label-micro flex items-center gap-2">
-                      <Terminal className="w-3 h-3" /> Date
+                       <Film className="w-3 h-3" /> Episode/Block
                     </label>
-                    <input type="text" value={date} onChange={e => setDate(e.target.value)} className="tech-input w-full rounded-xl" />
+                    <input 
+                      type="text" 
+                      value={episode} 
+                      onChange={e => setEpisode(e.target.value.toUpperCase())}
+                      placeholder="EP101 or B01"
+                      className="tech-input w-full rounded-xl" 
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <label className="label-micro flex items-center gap-2">
-                      <Terminal className="w-3 h-3" /> Day
+                      <Terminal className="w-3 h-3" /> Date
                     </label>
-                    <input type="text" value={day} onChange={e => setDay(e.target.value)} className="tech-input w-full rounded-xl" />
+                      <input 
+                        type="text" 
+                        value={date} 
+                        onChange={e => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+                          setDate(val);
+                        }} 
+                        placeholder="YYYYMMDD" 
+                        className="tech-input w-full rounded-xl" 
+                      />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="label-micro flex items-center gap-2">
+                      <Terminal className="w-3 h-3" /> Shooting Day
+                    </label>
+                    <input type="text" value={day} onChange={e => setDay(e.target.value)} placeholder="Day01 or D01" className="tech-input w-full rounded-xl" />
+                  </div>
                   <div className="space-y-1.5">
                     <label className="label-micro flex items-center gap-2">
                       <Layers className="w-3 h-3" /> Unit
@@ -465,30 +506,34 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
                       onChange={e => setUnit(e.target.value)}
                       className="tech-input w-full rounded-xl appearance-none cursor-pointer pr-10"
                     >
-                      <option value="MAIN">MAIN</option>
-                      <option value="2ND">2ND</option>
-                      <option value="SPLINTER">SPLINTER</option>
-                      <option value="AERIAL">AERIAL</option>
-                      <option value="UNDERWATER">UNDERWATER</option>
+                      <option value="MU">MU (Main Unit)</option>
+                      <option value="SU">SU (Second Unit)</option>
+                      <option value="TU">TU (Third Unit)</option>
+                      <option value="SP">SP (Splinter Unit)</option>
+                      <option value="PU">PU (Pick-up Unit)</option>
+                      <option value="AP">AP (Additional Photography)</option>
+                      <option value="RS">RS (Reshoot)</option>
+                      <option value="DU">DU (Drone Unit)</option>
+                      <option value="AU">AU (Array Unit)</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <label className="label-micro flex items-center gap-2">
-                      <FileCode className="w-3 h-3" /> Category
+                       <Layers className="w-3 h-3" /> Media
                     </label>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className="tech-input w-full rounded-xl appearance-none cursor-pointer pr-10"
+                    <select 
+                      value={category} 
+                      onChange={e => setCategory(e.target.value)}
+                      className="tech-input w-full rounded-xl appearance-none cursor-pointer pr-8"
                     >
                       <option value="CAMERA">CAMERA</option>
                       <option value="SOUND">SOUND</option>
                       <option value="PROXY">PROXY</option>
                     </select>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="label-micro flex items-center gap-2">
                       <Terminal className="w-3 h-3" /> Cam ID
@@ -499,7 +544,16 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
                     <label className="label-micro flex items-center gap-2">
                       <Terminal className="w-3 h-3" /> Roll No.
                     </label>
-                    <input type="text" value={roll} onChange={e => setRoll(e.target.value)} className="tech-input w-full rounded-xl" />
+                    <input 
+                      type="number" 
+                      min="0" 
+                      value={roll} 
+                      onChange={e => {
+                        const val = Math.max(0, parseInt(e.target.value) || 0).toString().padStart(3, '0');
+                        setRoll(val);
+                      }} 
+                      className="tech-input w-full rounded-xl" 
+                    />
                   </div>
                 </div>
                 {isIframeError && (
@@ -545,7 +599,7 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
               <div className="grid grid-cols-1 gap-3 shrink-0">
                 <button 
                   onClick={addToPreview}
-                  disabled={!project}
+                  disabled={!date || !day}
                   className="w-full py-4 bg-[var(--accent)] text-white rounded-xl font-bold text-[10px] tracking-[0.2em] hover:brightness-110 transition-all flex items-center justify-center gap-2 shadow-lg shadow-[var(--accent)]/20 border border-white/10 backdrop-blur-md uppercase"
                 >
                   <Plus className="w-4 h-4" /> Add to Hierarchy
@@ -576,7 +630,7 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
                   <button 
                     type="button"
                     onClick={generateToLocal}
-                    disabled={!project || previewStructure.length === 0}
+                    disabled={previewStructure.length === 0}
                     className="h-9 px-6 rounded-xl bg-[var(--accent)] text-white text-[10px] font-bold hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-30 shadow-lg shadow-[var(--accent)]/20 border border-white/10 backdrop-blur-md uppercase"
                   >
                     <FolderTree className="w-3.5 h-3.5" /> Generate to Local

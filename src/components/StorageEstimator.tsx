@@ -266,7 +266,35 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
             <div className="h-full flex flex-col min-h-0">
                <div className="p-10 rounded-3xl h-full glass border border-[var(--border)] flex flex-col min-h-0 overflow-hidden shadow-2xl relative">
                   <div className="flex flex-col items-center justify-start space-y-12 overflow-y-auto pr-2 custom-scrollbar flex-1 relative z-10 pt-10">
-                    <div className="flex flex-col items-center text-center">
+                      {isOverflow && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center gap-3"
+                        >
+                          <AlertCircle className="w-5 h-5 shrink-0" />
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest">Storage Overflow Detected</p>
+                            <p className="text-xs font-bold">Additional {overflowAmount.toFixed(1)} GB required</p>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {isOverflow && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center gap-3"
+                        >
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Capacity Exceeded</p>
+                            <p className="text-[14px] font-black italic">-{overflowAmount.toFixed(1)} GB missing</p>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      <div className="flex flex-col items-center text-center">
                        <p className="label-micro text-[var(--text-dim)] mb-2">Estimated Export Footprint</p>
                        <div className="flex items-baseline gap-3">
                          <span className="text-[100px] lg:text-[120px] font-black tracking-tighter text-[var(--text-main)] italic leading-none drop-shadow-2xl">{storageResult.size.toFixed(2)}</span>
@@ -285,6 +313,20 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                        <svg className="w-full h-full -rotate-90" viewBox="0 0 400 400">
                          {/* All fills must be "none" to prevent the center from capturing pointer events */}
                          <circle cx="200" cy="200" r="145" fill="none" stroke="var(--border)" strokeWidth="34" className="opacity-10" />
+                          
+                         {isOverflow && (
+                           <motion.circle 
+                             cx="200" cy="200" r="128" 
+                             fill="none" 
+                             stroke="#ef4444" 
+                             strokeWidth="4" 
+                             strokeDasharray={2*Math.PI*128} 
+                             strokeDashoffset={(2*Math.PI*128) * (1 - Math.min(1, overflowAmount / driveCapacity))}
+                             className="opacity-40"
+                             initial={{ scale: 0.9, opacity: 0 }}
+                             animate={{ scale: 1, opacity: 0.6 }}
+                           />
+                         )}
                          
                          <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--text-dim)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getRatio(usedSpace))} onMouseEnter={() => setHoveredSegment('used')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment === 'used' ? 'opacity-60 stroke-[44]' : 'opacity-20'}`} />
                          
@@ -320,8 +362,12 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                                 }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                               >
-                                <span className="text-[10px] uppercase font-black text-green-500 tracking-widest">Free Remaining</span>
-                                <div className="text-2xl font-black text-green-500 italic leading-none">{freeSpace.toFixed(1)} GB</div>
+                                <span className={`text-[10px] uppercase font-black tracking-widest ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
+                                  {isOverflow ? 'Capacity Exceeded' : 'Free Remaining'}
+                                </span>
+                                <div className={`text-2xl font-black italic leading-none ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
+                                  {isOverflow ? `-${overflowAmount.toFixed(1)}` : freeSpace.toFixed(1)} GB
+                                </div>
                               </motion.div>
 
                               <motion.div 
