@@ -12,7 +12,9 @@ import {
   Settings,
   Zap,
   Thermometer,
-  Layers
+  Layers,
+  Download,
+  Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -147,6 +149,84 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
     doc.save('DIT_Full_Metadata_Report.pdf');
   };
 
+  const exportCSV = () => {
+    if (files.length === 0) return;
+    
+    const headers = ['Filename', 'Camera', 'Lens', 'Resolution', 'Codec', 'Duration', 'Iris', 'ISO', 'WB', 'FPS', 'Size'];
+    const csvContent = [
+      headers.join(','),
+      ...files.map(f => [
+        `"${f.name}"`,
+        `"${f.camera}"`,
+        `"${f.lens}"`,
+        `"${f.resolution}"`,
+        `"${f.codec}"`,
+        `"${f.duration}"`,
+        `"${f.aperture}"`,
+        `"${f.iso}"`,
+        `"${f.wb}"`,
+        `"${f.fps_capture}"`,
+        `"${f.size}"`
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `DIT_Metadata_Backup_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const importCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const lines = content.split('\n');
+      if (lines.length < 2) return;
+
+      const newFiles: VideoMetadata[] = [];
+      // Skip header
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Simple CSV parser for quoted values
+        const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+        if (!values || values.length < 11) continue;
+
+        const cleanValues = values.map(v => v.replace(/^"|"$/g, ''));
+
+        newFiles.push({
+          id: Math.random().toString(36).substr(2, 9),
+          name: cleanValues[0],
+          camera: cleanValues[1],
+          lens: cleanValues[2],
+          resolution: cleanValues[3],
+          codec: cleanValues[4],
+          duration: cleanValues[5],
+          aperture: cleanValues[6],
+          iso: cleanValues[7],
+          wb: cleanValues[8],
+          fps_capture: cleanValues[9],
+          size: parseInt(cleanValues[10]) || 0,
+          type: 'video/imported',
+          lastModified: Date.now()
+        });
+      }
+      setFiles(prev => [...prev, ...newFiles]);
+    };
+    reader.readAsText(file);
+    // Reset input
+    e.target.value = '';
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -231,6 +311,31 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
                     <span className="text-[10px] font-mono font-bold text-[var(--accent-text)]">READY</span>
                   </div>
                   
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={exportCSV}
+                      disabled={files.length === 0}
+                      className="flex-1 py-3 bg-[var(--bg-shell)]/50 text-[var(--text-main)] rounded-xl font-bold text-[9px] tracking-widest hover:bg-[var(--bg-shell)] transition-all flex items-center justify-center gap-2 border border-[var(--border)] uppercase disabled:opacity-30"
+                      title="Export CSV Backup"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Backup CSV
+                    </button>
+                    
+                    <div className="flex-1 relative">
+                      <input 
+                        type="file" 
+                        accept=".csv"
+                        onChange={importCSV}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      />
+                      <button 
+                        className="w-full py-3 bg-[var(--bg-shell)]/50 text-[var(--text-main)] rounded-xl font-bold text-[9px] tracking-widest hover:bg-[var(--bg-shell)] transition-all flex items-center justify-center gap-2 border border-[var(--border)] uppercase"
+                      >
+                        <Database className="w-3.5 h-3.5" /> Load CSV
+                      </button>
+                    </div>
+                  </div>
+
                   <button 
                     onClick={generatePDF}
                     disabled={files.length === 0}

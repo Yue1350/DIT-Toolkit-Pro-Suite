@@ -38,8 +38,8 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
   const getSubFolders = (cat: string) => {
     switch (cat) {
       case 'CAMERA': return ['OCF', 'REPORTS', 'MHL'];
-      case 'SOUND': return ['WAV', 'REPORTS', 'MHL'];
-      case 'PROXY': return ['MOV', 'REPORTS'];
+      case 'SOUND': return ['AUDIO_WAV', 'REPORTS', 'MHL'];
+      case 'PROXY': return ['QUICKTIME', 'REPORTS'];
       default: return [];
     }
   };
@@ -62,24 +62,23 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
       if (!result.added) return { nodes, added: false };
       
       const newNodes = [...nodes];
-      // Expand root and second level, collapse below rolls (Roll is level 2)
-      const shouldCollapse = depth >= 2;
+      // Expand root and second level
+      const shouldCollapse = depth >= 3;
       newNodes[existingNodeIndex] = { 
-        ...existingNode, 
-        children: sortNodes(result.nodes),
-        isExpanded: shouldCollapse ? existingNode.isExpanded : true 
+    ...existingNode, 
+    children: sortNodes(result.nodes),
+    isExpanded: shouldCollapse ? existingNode.isExpanded : true 
       };
       return { nodes: sortNodes(newNodes), added: true };
     } else {
       const createBranch = (parts: string[], currentDepth: number): FolderNode => {
-        const [name, ...remaining] = parts;
-        return {
-          id: Math.random().toString(36).substr(2, 9),
-          name,
-          // Expand first few levels by default
-          isExpanded: (depth + currentDepth) < 2,
-          children: remaining.length > 0 ? sortNodes([createBranch(remaining, currentDepth + 1)]) : []
-        };
+    const [name, ...remaining] = parts;
+    return {
+      id: Math.random().toString(36).substr(2, 9),
+      name,
+      isExpanded: (depth + currentDepth) < 3,
+      children: remaining.length > 0 ? sortNodes([createBranch(remaining, currentDepth + 1)]) : []
+    };
       };
       return { nodes: sortNodes([...nodes, createBranch(path, depth)]), added: true };
     }
@@ -92,22 +91,25 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
     }
     setError(null);
     
-    // Netflix Guideline Root: YYYYMMDD_EP###_Day##_Unit
-    // Feature films omit EP field
+    // Netflix Ingest Standard: YYYYMMDD_EP###_Day##_Unit
+    // Supporting variations from PDF: Block##, B##, BK#, Day[###], D[##], etc.
     const rootName = [
       date,
-      episode.trim(),
-      day.trim(),
-      unit.trim()
+      episode.trim().toUpperCase(),
+      day.trim().toUpperCase(),
+      unit.trim().toUpperCase()
     ].filter(Boolean).join('_');
     
     let tempStructure = [...previewStructure];
     
-    // 1. Ensure "Reports" folder exists at root
-    const { nodes: withReports } = insertPath(tempStructure, [rootName, 'Reports']);
-    tempStructure = withReports;
+    // 1. Root Level Components as per spec: Camera_Media, Sound_Media, Reports
+    const baseFolders = ['Camera_Media', 'Sound_Media', 'Reports'];
+    for (const bf of baseFolders) {
+      const { nodes: withBase } = insertPath(tempStructure, [rootName, bf]);
+      tempStructure = withBase;
+    }
 
-    // 2. Determine Media Path
+    // 2. Media Specific Roll Structure
     let mediaTypeFolder = '';
     let rollId = '';
     
@@ -122,29 +124,28 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
       rollId = `P${roll.padStart(3, '0')}`;
     }
 
-    const basePath = [rootName, mediaTypeFolder, rollId];
+    const rollPath = [rootName, mediaTypeFolder, rollId];
     const subs = getSubFolders(category);
     
     let addedAny = false;
     
     if (subs.length === 0) {
-      const { nodes, added } = insertPath(tempStructure, basePath);
+      const { nodes, added } = insertPath(tempStructure, rollPath);
       tempStructure = nodes;
       addedAny = added;
     } else {
       for (const sub of subs) {
-        const fullPath = [...basePath, sub];
-        const { nodes, added } = insertPath(tempStructure, fullPath);
-        tempStructure = nodes;
-        if (added) addedAny = true;
+    const fullPath = [...rollPath, sub];
+    const { nodes, added } = insertPath(tempStructure, fullPath);
+    tempStructure = nodes;
+    if (added) addedAny = true;
       }
     }
     
     if (!addedAny) {
-      setError(`Duplicate structure found for ${rollId}`);
+      setError(`Roll ${rollId} already exists in this hierarchy.`);
     } else {
       setPreviewStructure(tempStructure);
-      // Auto-increment for next roll
       const nextRoll = (parseInt(roll) + 1).toString().padStart(3, '0');
       setRoll(nextRoll);
     }

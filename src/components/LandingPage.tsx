@@ -29,7 +29,7 @@ const FeatureCard = ({ title, desc, icon, onClick }: FeatureCardProps) => (
 );
 
 export default function LandingPage({ setPage, isDark, toggleTheme }: { setPage: (p: string) => void, isDark?: boolean, toggleTheme?: () => void }) {
-  const [openVersion, setOpenVersion] = useState<string | null>('v5.5.0');
+  const [openVersion, setOpenVersion] = useState<string | null>('v6.5.0');
 
   const navItems = [
     { id: 'home', label: 'HOME' },

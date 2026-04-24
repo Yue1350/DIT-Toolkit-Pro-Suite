@@ -3,7 +3,7 @@ import { Terminal, FileVideo, BookOpen, ShieldCheck, ArrowLeft, ChevronDown, Sun
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function HelpPage({ setPage, isDark, toggleTheme }: { setPage: (p: string) => void, isDark?: boolean, toggleTheme?: () => void }) {
-  const [openVersion, setOpenVersion] = React.useState<string | null>('v6.0.0');
+  const [openVersion, setOpenVersion] = React.useState<string | null>('v6.5.0');
 
   const navItems = [
     { id: 'home', label: 'HOME' },
@@ -14,6 +14,21 @@ export default function HelpPage({ setPage, isDark, toggleTheme }: { setPage: (p
   ];
 
   const changeLogs = [
+    {
+      version: 'v6.5.0',
+      date: '2026.04.24',
+      items: [
+        "Official Site Launch: dittoolkit.com",
+        "Adopted Netflix Ingest Standards for Folder Generator (YYYYMMDD_EP###_Day##_Unit)",
+        "Added support for production subfolders (Camera_Media, Sound_Media, Reports)",
+        "Implemented Storage Estimator 'Auto Scaling Mode' for manual project planning",
+        "Added 'Critical Overflow Impact' persistent alerts and Visual Ring indicators",
+        "Added 'Remove Drive' functionality to reset storage target paths",
+        "Implemented Metadata CSV Backup system (Import/Export) for data persistence",
+        "Refined storage visualization layout with responsive grid legends",
+        "Enhanced drive identity display within the core analytics graph"
+      ]
+    },
     {
       version: 'v6.0.0',
       date: '2026.04.22',
