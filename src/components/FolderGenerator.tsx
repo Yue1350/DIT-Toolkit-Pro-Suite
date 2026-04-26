@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, Folder, FolderTree, Plus, Trash2, Download, Package, FileCode, ChevronRight, ChevronDown, Edit2, X, Check, AlertCircle, Camera, Music, Layers, Film, Sun, Moon, LayoutDashboard } from 'lucide-react';
+import { Terminal, Folder, FolderTree, Plus, Trash2, Download, Package, ChevronRight, ChevronDown, Edit2, X, Check, AlertCircle, Film, Sun, Moon, LayoutDashboard, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -36,16 +36,20 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
   }, [camId, category, day, date]);
 
   const getSubFolders = (cat: string) => {
-    switch (cat) {
-      case 'CAMERA': return ['OCF', 'REPORTS', 'MHL'];
-      case 'SOUND': return ['AUDIO_WAV', 'REPORTS', 'MHL'];
-      case 'PROXY': return ['QUICKTIME', 'REPORTS'];
-      default: return [];
+    if (cat === 'CAMERA' || cat === 'PROXY') {
+      return [`CAMERA ${camId}`];
     }
+    return [];
   };
 
   const sortNodes = (nodes: FolderNode[]) => {
-    return [...nodes].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    return [...nodes].sort((a, b) => {
+      const aLower = a.name.toLowerCase();
+      const bLower = b.name.toLowerCase();
+      if (aLower.includes('report')) return 1;
+      if (bLower.includes('report')) return -1;
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    });
   };
 
   const insertPath = (nodes: FolderNode[], path: string[], depth = 0): { nodes: FolderNode[], added: boolean } => {
@@ -102,29 +106,32 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
     
     let tempStructure = [...previewStructure];
     
-    // 1. Root Level Components as per spec: Camera_Media, Sound_Media, Reports
-    const baseFolders = ['Camera_Media', 'Sound_Media', 'Reports'];
-    for (const bf of baseFolders) {
-      const { nodes: withBase } = insertPath(tempStructure, [rootName, bf]);
-      tempStructure = withBase;
-    }
+    // 1. Always ensure Reports folder exists
+    const { nodes: withReports } = insertPath(tempStructure, [rootName, 'Reports']);
+    tempStructure = withReports;
 
     // 2. Media Specific Roll Structure
     let mediaTypeFolder = '';
     let rollId = '';
+    let intermediateFolder = '';
     
     if (category === 'CAMERA') {
       mediaTypeFolder = 'Camera_Media';
+      intermediateFolder = `CAMERA ${camId}`;
       rollId = `${camId}${roll.padStart(3, '0')}`;
     } else if (category === 'SOUND') {
       mediaTypeFolder = 'Sound_Media';
       rollId = `S${roll.padStart(3, '0')}`;
-    } else {
+    } else if (category === 'PROXY') {
       mediaTypeFolder = 'Proxy_Media';
-      rollId = `P${roll.padStart(3, '0')}`;
+      intermediateFolder = `CAMERA ${camId}`;
+      rollId = `${camId}${roll.padStart(3, '0')}`;
     }
 
-    const rollPath = [rootName, mediaTypeFolder, rollId];
+    const rollPath = [rootName, mediaTypeFolder];
+    if (intermediateFolder) rollPath.push(intermediateFolder);
+    rollPath.push(rollId);
+
     const subs = getSubFolders(category);
     
     let addedAny = false;
@@ -535,11 +542,17 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
                       <option value="PROXY">PROXY</option>
                     </select>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className={`space-y-1.5 transition-opacity duration-300 ${category === 'SOUND' ? 'opacity-30 pointer-events-none' : ''}`}>
                     <label className="label-micro flex items-center gap-2">
                       <Terminal className="w-3 h-3" /> Cam ID
                     </label>
-                    <input type="text" value={camId} onChange={e => setCamId(e.target.value.toUpperCase())} className="tech-input w-full rounded-xl" />
+                    <input 
+                      type="text" 
+                      value={camId} 
+                      onChange={e => setCamId(e.target.value.toUpperCase())} 
+                      disabled={category === 'SOUND'}
+                      className="tech-input w-full rounded-xl" 
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <label className="label-micro flex items-center gap-2">

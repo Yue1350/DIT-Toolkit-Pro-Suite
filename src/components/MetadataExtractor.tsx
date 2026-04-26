@@ -36,6 +36,7 @@ interface VideoMetadata {
   bitrate: string;
   fps: string;
   lastModified: number;
+  creationDate: number;
 }
 
 export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { setPage: (p: string) => void, isDark?: boolean, toggleTheme?: () => void }) {
@@ -86,7 +87,8 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
           codec: detectedCodec,
           bitrate: `${bitrateMbps.toFixed(2)} Mbps`,
           fps: '23.98',
-          lastModified: file.lastModified
+          lastModified: file.lastModified,
+          creationDate: (file as any).lastModifiedDate?.getTime() || file.lastModified
         });
       };
 
@@ -117,7 +119,8 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
           codec: detectedCodec,
           bitrate: 'VBR HIGH',
           fps: '23.98/VAR',
-          lastModified: file.lastModified
+          lastModified: file.lastModified,
+          creationDate: (file as any).lastModifiedDate?.getTime() || file.lastModified
         });
       };
       video.src = URL.createObjectURL(file);
@@ -154,12 +157,14 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
       f.fps,
       f.bitrate,
       f.duration,
-      formatSize(f.size)
+      formatSize(f.size),
+      new Date(f.lastModified).toLocaleDateString(),
+      new Date(f.creationDate).toLocaleDateString()
     ]);
 
     autoTable(doc, {
       startY: 40,
-      head: [['Filename', 'Format', 'Codec', 'Resolution', 'Aspect', 'FPS', 'Bitrate', 'Length', 'Weight']],
+      head: [['Filename', 'Format', 'Codec', 'Resolution', 'Aspect', 'FPS', 'Bitrate', 'Length', 'Weight', 'Modified', 'Created']],
       body: tableData,
       theme: 'grid',
       headStyles: { fillColor: [24, 119, 242] },
@@ -172,7 +177,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
   const exportCSV = () => {
     if (files.length === 0) return;
     
-    const headers = ['Filename', 'Container', 'Codec', 'Resolution', 'Aspect Ratio', 'FPS', 'Bitrate', 'Duration', 'Size', 'Timestamp'];
+    const headers = ['Filename', 'Container', 'Codec', 'Resolution', 'Aspect Ratio', 'FPS', 'Bitrate', 'Duration', 'Size', 'Last Modified', 'Creation Date'];
     const csvContent = [
       headers.join(','),
       ...files.map(f => [
@@ -185,7 +190,8 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
         `"${f.bitrate}"`,
         `"${f.duration}"`,
         `"${f.size}"`,
-        `"${f.lastModified}"`
+        `"${new Date(f.lastModified).toISOString()}"`,
+        `"${new Date(f.creationDate).toISOString()}"`
       ].join(','))
     ].join('\n');
 
@@ -218,7 +224,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
         
         // Simple CSV parser for quoted values
         const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-        if (!values || values.length < 10) continue;
+        if (!values || values.length < 11) continue;
 
         const cleanValues = values.map(v => v.replace(/^"|"$/g, ''));
 
@@ -236,7 +242,8 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
           extension: cleanValues[0].split('.').pop() || 'MOV',
           size: parseInt(cleanValues[8]) || 0,
           type: 'video/imported',
-          lastModified: parseInt(cleanValues[9]) || Date.now()
+          lastModified: Date.parse(cleanValues[9]) || Date.now(),
+          creationDate: Date.parse(cleanValues[10]) || Date.now()
         });
       }
       setFiles(prev => [...prev, ...newFiles]);
@@ -337,7 +344,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
                       className="flex-1 py-3 bg-[var(--bg-shell)]/50 text-[var(--text-main)] rounded-xl font-bold text-[9px] tracking-widest hover:bg-[var(--bg-shell)] transition-all flex items-center justify-center gap-2 border border-[var(--border)] uppercase disabled:opacity-30"
                       title="Export CSV Backup"
                     >
-                      <Download className="w-3.5 h-3.5" /> Backup CSV
+                      <Download className="w-3.5 h-3.5" /> Export CSV
                     </button>
                     
                     <div className="flex-1 relative">
@@ -396,7 +403,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
                       >
                         <div className="flex items-center justify-between mb-6">
                           <div className="flex items-center gap-6 flex-1 min-w-0">
-                            <div className="p-3 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-text)]">
+                            <div className="w-12 h-12 rounded-full glass border border-[var(--border)] bg-[var(--bg-shell)] flex items-center justify-center text-[var(--accent-text)] shadow-inner">
                               <FileVideo className="w-5 h-5" />
                             </div>
                             <div className="flex-1 min-w-0 space-y-1">
@@ -419,7 +426,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6 pt-6 border-t border-[var(--border)]/50">
                            <div className="space-y-1.5">
                               <p className="flex items-center gap-1.5 label-micro text-[10px] text-[var(--text-micro)] uppercase opacity-60">
-                                 <FileText className="w-3 h-3" /> Format
+                                 <Layers className="w-3 h-3" /> Container
                               </p>
                               <p className="text-[13px] font-black italic text-[var(--text-main)] truncate text-[var(--accent-text)]">{file.container}</p>
                            </div>
@@ -443,10 +450,13 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
                            </div>
                            <div className="space-y-1.5">
                               <p className="flex items-center gap-1.5 label-micro text-[10px] text-[var(--text-micro)] uppercase opacity-60">
-                                 <Thermometer className="w-3 h-3" /> Modified
+                                 <Thermometer className="w-3 h-3" /> Timestamps
                               </p>
-                              <p className="text-[11px] font-bold text-[var(--text-dim)] truncate">
-                                {new Date(file.lastModified).toLocaleDateString()}
+                              <p className="text-[10px] font-bold text-[var(--text-dim)]">
+                                M: {new Date(file.lastModified).toLocaleDateString()}
+                              </p>
+                              <p className="text-[10px] font-bold text-[var(--text-micro)]">
+                                C: {new Date(file.creationDate).toLocaleDateString()}
                               </p>
                            </div>
                            <div className="space-y-1.5">

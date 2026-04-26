@@ -8,10 +8,11 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import LandingPage from './components/LandingPage';
 import FolderGenerator from './components/FolderGenerator';
-
 import HelpPage from './components/HelpPage';
 import MetadataExtractor from './components/MetadataExtractor';
 import StorageEstimator from './components/StorageEstimator';
+import { FolderTree, Settings, HardDrive, Info, Moon, Sun, Monitor, LayoutGrid, ChevronRight, Menu, X, BookOpen, FileVideo } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [page, setPage] = useState('home');
@@ -78,11 +79,67 @@ export default function App() {
         )}
         
         <main className="flex-1 overflow-hidden relative">
-          {page === 'home' && <LandingPage setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />}
-          {page === 'folder' && <FolderGenerator setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />}
-          {page === 'metadata' && <MetadataExtractor setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />}
-          {page === 'storage' && <StorageEstimator setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />}
-          {page === 'help' && <HelpPage setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />}
+          <AnimatePresence mode="wait" initial={false}>
+            {page === 'home' && (
+              <motion.div
+                key="home"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0"
+              >
+                <LandingPage setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />
+              </motion.div>
+            )}
+            {page === 'folder' && (
+              <motion.div
+                key="folder"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.02 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0"
+              >
+                <FolderGenerator setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />
+              </motion.div>
+            )}
+            {page === 'metadata' && (
+              <motion.div
+                key="metadata"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.02 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0"
+              >
+                <MetadataExtractor setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />
+              </motion.div>
+            )}
+            {page === 'storage' && (
+              <motion.div
+                key="storage"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.02 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0"
+              >
+                <StorageEstimator setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />
+              </motion.div>
+            )}
+            {page === 'help' && (
+              <motion.div
+                key="help"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="absolute inset-0"
+              >
+                <HelpPage setPage={setPage} isDark={isDark} toggleTheme={toggleTheme} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
       </div>
     </div>
