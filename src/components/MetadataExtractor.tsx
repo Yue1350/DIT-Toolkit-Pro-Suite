@@ -14,7 +14,10 @@ import {
   Thermometer,
   Layers,
   Download,
-  Database
+  Database,
+  ChevronUp,
+  ChevronDown,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -45,6 +48,28 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
   const [files, setFiles] = useState<VideoMetadata[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof VideoMetadata; direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: keyof VideoMetadata) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedFiles = React.useMemo(() => {
+    if (!sortConfig) return files;
+    return [...files].sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [files, sortConfig]);
 
   const calculateAspectRatio = (w: number, h: number) => {
     const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
@@ -96,7 +121,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
       };
       
       const codecId = video.CodecID?.toLowerCase();
-      const codecName = video.Format_Commercial || proResMap[codecId] || video.Format || 'UNKNOWN PRO CODEC';
+      const codecName = video.Format_Commercial || proResMap[codecId] || video.Format || 'N/A';
       
       // 3. Bit Depth Fallback
       const getBitDepthString = (vTrack: any, name: string) => {
@@ -142,15 +167,15 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
         name: file.name,
         path: customPath || (file as any).webkitRelativePath || file.name,
         size: file.size,
-        container: general.Format || file.name.split('.').pop()?.toUpperCase() || 'UNKNOWN',
-        resolution: video.Width ? `${video.Width}x${video.Height}` : 'UNKNOWN',
-        aspectRatio: video.DisplayAspectRatio_String || (video.Width ? calculateAspectRatio(parseInt(video.Width), parseInt(video.Height)) : '16:9'),
+        container: general.Format || file.name.split('.').pop()?.toUpperCase() || 'N/A',
+        resolution: video.Width ? `${video.Width}x${video.Height}` : 'N/A',
+        aspectRatio: video.DisplayAspectRatio_String || (video.Width ? calculateAspectRatio(parseInt(video.Width), parseInt(video.Height)) : 'N/A'),
         duration: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${frameOfSecond.toString().padStart(2, '0')}`,
         startTimecode,
         endTimecode,
         codec: codecName,
-        bitrate: general.OverallBitRate ? `${(parseFloat(general.OverallBitRate) / 1000000).toFixed(2)} Mbps` : 'UNKNOWN',
-        fps: video.FrameRate || '23.976',
+        bitrate: general.OverallBitRate ? `${(parseFloat(general.OverallBitRate) / 1000000).toFixed(2)} Mbps` : 'N/A',
+        fps: video.FrameRate || 'N/A',
         bitDepth,
         lastModified: file.lastModified,
         creationDate: (file as any).lastModifiedDate?.getTime() || file.lastModified
@@ -167,7 +192,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
     return new Promise((resolve) => {
       const video = document.createElement('video');
       video.preload = 'metadata';
-      const extension = file.name.split('.').pop()?.toUpperCase() || 'UNKNOWN';
+      const extension = file.name.split('.').pop()?.toUpperCase() || 'N/A';
       const container = (file.type.split('/')[1]?.toUpperCase() || extension).replace('QUICKTIME', 'MOV');
 
       video.onloadedmetadata = () => {
@@ -193,7 +218,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
           endTimecode: null,
           codec: detectedCodec,
           bitrate: `${bitrateMbps.toFixed(2)} Mbps`,
-          fps: '23.976',
+          fps: 'N/A',
           bitDepth: '8-bit',
           lastModified: file.lastModified,
           creationDate: (file as any).lastModifiedDate?.getTime() || file.lastModified
@@ -208,15 +233,15 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
           path: customPath || file.name,
           size: file.size,
           container,
-          resolution: 'UNKNOWN',
-          aspectRatio: '16:9',
+          resolution: 'N/A',
+          aspectRatio: 'N/A',
           duration: '00:00:00:00',
           startTimecode: null,
           endTimecode: null,
-          codec: 'Unknown Codec',
+          codec: 'N/A',
           bitrate: '0 Mbps',
-          fps: '23.976',
-          bitDepth: '8-bit',
+          fps: 'N/A',
+          bitDepth: 'N/A',
           lastModified: file.lastModified,
           creationDate: (file as any).lastModifiedDate?.getTime() || file.lastModified
         });
@@ -228,12 +253,15 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
   const scanEntries = async (entries: FileSystemEntry[]): Promise<{ file: File, path: string }[]> => {
     let results: { file: File, path: string }[] = [];
     
+    // Valid video/raw extensions according to user request (media only)
+    const videoExtensions = ['mov', 'mp4', 'mxf', 'r3d', 'arri', 'ari', 'mkv', 'avi', 'braw', 'crm'];
+
     for (const entry of entries) {
       if (entry.isFile) {
         const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
-        // Check if it's a video file or common raw format
         const ext = file.name.split('.').pop()?.toLowerCase();
-        const videoExtensions = ['mov', 'mp4', 'mxf', 'r3d', 'arri', 'ari', 'mkv', 'avi'];
+        
+        // Stricter filtering: must be a video extension OR video mime type
         if (videoExtensions.includes(ext || '') || file.type.startsWith('video/')) {
           results.push({ file, path: entry.fullPath.startsWith('/') ? entry.fullPath.substring(1) : entry.fullPath });
         }
@@ -271,7 +299,16 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
     if (!e.target.files) return;
     setIsProcessing(true);
     const newFiles = Array.from(e.target.files) as File[];
-    const processed = await Promise.all(newFiles.map(file => analyzeVideoWithMediaInfo(file, (file as any).webkitRelativePath || file.name)));
+    
+    // Valid video/raw extensions
+    const videoExtensions = ['mov', 'mp4', 'mxf', 'r3d', 'arri', 'ari', 'mkv', 'avi', 'braw', 'crm'];
+    
+    const filteredFiles = newFiles.filter(file => {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      return videoExtensions.includes(ext || '') || file.type.startsWith('video/');
+    });
+
+    const processed = await Promise.all(filteredFiles.map(file => analyzeVideoWithMediaInfo(file, (file as any).webkitRelativePath || file.name)));
     setFiles(prev => [...prev, ...processed]);
     setIsProcessing(false);
     // Reset input
@@ -551,18 +588,32 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
               <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar">
                 {files.length > 0 ? (
                   <div className="min-w-[800px]">
-                    <div className="grid grid-cols-[1fr_120px_120px_100px_180px_100px_100px] gap-4 px-6 py-4 border-b border-[var(--border)] label-micro text-[10px] text-[var(--text-dim)] uppercase tracking-widest font-bold sticky top-0 bg-[var(--bg-shell)]/80 backdrop-blur-md z-20">
-                      <div>Filename</div>
-                      <div>Start TC</div>
-                      <div>Length</div>
-                      <div>Resolution</div>
-                      <div>Codec</div>
-                      <div>Bit Depth</div>
-                      <div>FPS</div>
+                    <div className="grid grid-cols-[1fr_120px_120px_100px_180px_100px_100px] gap-4 px-6 py-4 border-b border-[var(--border)] label-micro text-[10px] text-[var(--text-dim)] uppercase tracking-widest font-bold sticky top-0 bg-[var(--bg-shell)] z-40">
+                      <div className="cursor-pointer hover:text-[var(--accent)] transition-colors flex items-center gap-1" onClick={() => handleSort('name')}>
+                        Filename {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                      </div>
+                      <div className="cursor-pointer hover:text-[var(--accent)] transition-colors flex items-center gap-1" onClick={() => handleSort('startTimecode')}>
+                        Start TC {sortConfig?.key === 'startTimecode' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                      </div>
+                      <div className="cursor-pointer hover:text-[var(--accent)] transition-colors flex items-center gap-1" onClick={() => handleSort('duration')}>
+                        Length {sortConfig?.key === 'duration' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                      </div>
+                      <div className="cursor-pointer hover:text-[var(--accent)] transition-colors flex items-center gap-1" onClick={() => handleSort('resolution')}>
+                        Resolution {sortConfig?.key === 'resolution' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                      </div>
+                      <div className="cursor-pointer hover:text-[var(--accent)] transition-colors flex items-center gap-1" onClick={() => handleSort('codec')}>
+                        Codec {sortConfig?.key === 'codec' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                      </div>
+                      <div className="cursor-pointer hover:text-[var(--accent)] transition-colors flex items-center gap-1" onClick={() => handleSort('bitDepth')}>
+                        Bit Depth {sortConfig?.key === 'bitDepth' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                      </div>
+                      <div className="cursor-pointer hover:text-[var(--accent)] transition-colors flex items-center gap-1" onClick={() => handleSort('fps')}>
+                        FPS {sortConfig?.key === 'fps' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                      </div>
                     </div>
                     
                     <div className="flex flex-col">
-                      {files.map((file) => (
+                      {sortedFiles.map((file) => (
                         <div key={file.id} className="border-b border-[var(--border)]/30">
                           <motion.div 
                             onClick={() => setExpandedId(expandedId === file.id ? null : file.id)}

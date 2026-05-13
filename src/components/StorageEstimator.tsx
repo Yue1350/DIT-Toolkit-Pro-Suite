@@ -257,8 +257,9 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                                 opacity: (hoveredSegment && hoveredSegment !== 'free') ? 0.3 : 1
                               }}
                             >
-                              <span className={`text-[10px] uppercase font-black tracking-widest ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
-                                {isOverflow ? 'Drive Deficit' : 'Free Remaining'}
+                              <span className={`text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 ${isOverflow ? 'text-red-500 animate-pulse' : 'text-green-500'}`}>
+                                {isOverflow && <AlertCircle className="w-3.5 h-3.5" />}
+                                {isOverflow ? 'Critical Overflow' : 'Free Remaining'}
                               </span>
                               <div className={`text-xl font-black italic leading-none ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
                                 {isOverflow ? `-${overflowAmount.toFixed(1)}` : freeSpace.toFixed(1)} GB
@@ -333,52 +334,69 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                           <svg className="w-full h-full -rotate-90" viewBox="0 0 400 400">
                             <circle cx="200" cy="200" r="145" fill="none" stroke="var(--border)" strokeWidth="34" className="opacity-10" />
                              
-                            {/* Visual Normalization Logic for Arcs */}
-                            {(() => {
-                              const totalRaw = usedSpace + videoSize + audioSize + bufferSize;
-                              const visScaleFactor = (driveCapacity > 0 && totalRaw > driveCapacity) ? (driveCapacity / totalRaw) : 1;
-                              
-                              const getNormalizedRatio = (val: number) => {
-                                if (driveCapacity <= 0) return (totalRaw > 0 ? val / totalRaw : 0);
-                                const rawRatio = val / driveCapacity;
-                                return isOverflow ? (rawRatio * visScaleFactor) : rawRatio;
-                              };
+                                  {/* Visualization Normalization Logic for Arcs */}
+                                  {(() => {
+                                    const totalRaw = usedSpace + videoSize + audioSize + bufferSize;
+                                    const visMax = Math.max(totalRaw, driveCapacity, 1);
+                                    
+                                    const getNormalizedRatio = (val: number) => {
+                                      return val / visMax;
+                                    };
 
-                              let currentRotation = 0;
+                                    let currentRotation = 0;
 
-                              return (
-                                <>
-                                  {/* Used Space */}
-                                  <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--text-dim)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(usedSpace))} onMouseEnter={() => setHoveredSegment('used')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment === 'used' ? 'opacity-60 stroke-[44]' : 'opacity-20'}`} />
-                                  {(() => { currentRotation += getNormalizedRatio(usedSpace); return null; })()}
+                                    return (
+                                      <>
+                                        {/* Background Channel */}
+                                        <circle cx="200" cy="200" r="145" fill="none" stroke="var(--border)" strokeWidth="34" className="opacity-10" />
 
-                                  {/* Video */}
-                                  <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--accent)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(videoSize))} style={{ rotate: `${currentRotation*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('video')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='video'?'stroke-[44]':'opacity-80'}`} />
-                                  {(() => { currentRotation += getNormalizedRatio(videoSize); return null; })()}
+                                        {/* Used Space */}
+                                        <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--text-dim)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(usedSpace))} onMouseEnter={() => setHoveredSegment('used')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment === 'used' ? 'opacity-60 stroke-[44]' : 'opacity-20'}`} />
+                                        {(() => { currentRotation += getNormalizedRatio(usedSpace); return null; })()}
 
-                                  {/* Audio */}
-                                  <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#f59e0b" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(audioSize))} style={{ rotate: `${currentRotation*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('audio')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='audio'?'stroke-[44]':'opacity-80'}`} />
-                                  {(() => { currentRotation += getNormalizedRatio(audioSize); return null; })()}
+                                        {/* Video */}
+                                        <motion.circle cx="200" cy="200" r="145" fill="none" stroke="var(--accent)" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(videoSize))} style={{ rotate: `${currentRotation*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('video')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='video'?'stroke-[44]':'opacity-80'}`} />
+                                        {(() => { currentRotation += getNormalizedRatio(videoSize); return null; })()}
 
-                                  {/* Buffer */}
-                                  <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#a855f7" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(bufferSize))} style={{ rotate: `${currentRotation*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('buffer')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='buffer'?'stroke-[44]':'opacity-40'}`} />
-                                  
-                                  {/* Overflow Danger Ring */}
-                                  {isOverflow && (
-                                    <motion.circle 
-                                      cx="200" cy="200" r="168" 
-                                      fill="none" 
-                                      stroke="#ef4444" 
-                                      strokeWidth="3" 
-                                      strokeDasharray={2*Math.PI*168} 
-                                      className="opacity-40"
-                                      animate={{ opacity: [0.2, 0.5, 0.2] }}
-                                      transition={{ duration: 2, repeat: Infinity }}
-                                    />
-                                  )}
-                                </>
-                              );
-                            })()}
+                                        {/* Audio */}
+                                        <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#f59e0b" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(audioSize))} style={{ rotate: `${currentRotation*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('audio')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='audio'?'stroke-[44]':'opacity-80'}`} />
+                                        {(() => { currentRotation += getNormalizedRatio(audioSize); return null; })()}
+
+                                        {/* Buffer */}
+                                        <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#a855f7" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(bufferSize))} style={{ rotate: `${currentRotation*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('buffer')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='buffer'?'stroke-[44]':'opacity-40'}`} />
+                                        
+                                        {/* Overflow Red Zone (Outer highlight) */}
+                                        {isOverflow && (
+                                          <motion.circle 
+                                            cx="200" cy="200" r="162" 
+                                            fill="none" 
+                                            stroke="#ef4444" 
+                                            strokeWidth="6" 
+                                            strokeLinecap="round"
+                                            strokeDasharray={2*Math.PI*162} 
+                                            strokeDashoffset={(2*Math.PI*162) * (1 - (overflowAmount / visMax))}
+                                            style={{ rotate: `${(driveCapacity / visMax) * 360}deg`, transformOrigin: 'center' }}
+                                            className="drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                          />
+                                        )}
+
+                                        {/* Critical Threshold Line */}
+                                        {driveCapacity > 0 && (
+                                          <motion.line 
+                                            x1="200" y1="55" x2="200" y2="40" 
+                                            stroke={isOverflow ? "#ef4444" : "var(--accent)"} 
+                                            strokeWidth="4" 
+                                            strokeLinecap="round"
+                                            style={{ rotate: `${(driveCapacity / visMax) * 360}deg`, transformOrigin: 'center' }}
+                                            animate={isOverflow ? { opacity: [1, 0.5, 1], scaleY: [1, 1.2, 1] } : {}}
+                                            transition={{ duration: 1, repeat: Infinity }}
+                                          />
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                           </svg>
 
                             </div>
@@ -397,20 +415,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                               </div>
                             </div>
 
-                          {isOverflow && (
-                           <motion.div 
-                             initial={{ opacity: 0, y: 20 }}
-                             animate={{ opacity: 1, y: 0 }}
-                             className="absolute bottom-4 left-1/2 -translate-x-1/2 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center gap-3 z-30 shadow-2xl backdrop-blur-md"
-                           >
-                             <AlertCircle className="w-5 h-5 shrink-0" />
-                             <div className="whitespace-nowrap">
-                               <p className="text-[10px] font-black uppercase tracking-widest leading-none mb-1">Critical Overflow Impact</p>
-                               <p className="text-xs font-bold">Additional {overflowAmount.toFixed(1)} GB required on target</p>
-                             </div>
-                           </motion.div>
-                          )}
-                       </div>
+                        </div>
 
                         {/* Right Side Labels */}
                        <div className="hidden xl:flex flex-col items-end gap-10 w-[180px] shrink-0 pointer-events-none">
@@ -477,10 +482,11 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
 
                        {/* Mobile/Compact Grid Legend */}
                        <div className="xl:hidden grid grid-cols-2 gap-x-8 gap-y-4 mt-2 w-full px-4 pb-6">
-                          {targetDriveName && freeSpace > 0 && (
+                          {targetDriveName && (
                             <div className="flex flex-col">
-                              <span className={`text-[10px] uppercase font-black tracking-widest ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
-                                Free Capacity
+                              <span className={`text-[10px] uppercase font-black tracking-widest flex items-center gap-1 ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
+                                {isOverflow && <AlertCircle className="w-3 h-3" />}
+                                {isOverflow ? 'Overflow' : 'Free Space'}
                               </span>
                               <div className={`text-xl font-black italic ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
                                 {isOverflow ? `-${overflowAmount.toFixed(1)}` : freeSpace.toFixed(1)} GB
