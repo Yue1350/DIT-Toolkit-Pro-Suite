@@ -106,10 +106,30 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
       const tracks = result.media.track;
 
       // 1. Timecode Logic - Check 'Time code' and 'Other'
-      const timecodeTrack = tracks.find((t: any) => t['@type'] === 'Time code' || t['@type'] === 'Other') ?? {};
-      const startTimecode = timecodeTrack.TimeCode_FirstFrame ?? general.TimeCode_FirstFrame ?? null;
-      const endTimecode = timecodeTrack.TimeCode_LastFrame || null;
+      // 1. Helper for Timecode Math
+      const timecodeToFrames = (tc: string, fps: number) => {
+        const parts = tc.split(/[:;]/);
+        if (parts.length !== 4) return 0;
+        const fpsInt = Math.round(fps);
+        const h = parseInt(parts[0]);
+        const m = parseInt(parts[1]);
+        const s = parseInt(parts[2]);
+        const f = parseInt(parts[3]);
+        return (h * 3600 * fpsInt) + (m * 60 * fpsInt) + (s * fpsInt) + f;
+      };
 
+      const framesToTimecode = (totalFrames: number, fps: number) => {
+        const fpsInt = Math.round(fps);
+        const h = Math.floor(totalFrames / (3600 * fpsInt));
+        const m = Math.floor((totalFrames % (3600 * fpsInt)) / (60 * fpsInt));
+        const s = Math.floor((totalFrames % (60 * fpsInt)) / fpsInt);
+        const f = totalFrames % fpsInt;
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${f.toString().padStart(2, '0')}`;
+      };
+
+      const timecodeTrack = tracks.find((t: any) => t['@type'] === 'Time code' || t['@type'] === 'Other') ?? {};
+      const startTimecodeStr = timecodeTrack.TimeCode_FirstFrame ?? general.TimeCode_FirstFrame ?? "00:00:00:00";
+      
       // 2. ProRes Codec Mapping
       const proResMap: Record<string, string> = {
         'apcn': 'Apple ProRes 422',
@@ -133,7 +153,8 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
       };
       const bitDepth = getBitDepthString(video, codecName);
 
-      // 4. FPS Precision with fractions
+      // 4. Frames analysis
+      let totalFrames = parseInt(video.FrameCount || general.FrameCount || "0");
       const rawFps = parseFloat(video.FrameRate || '23.976');
       const FPS_FRACTIONS: Record<number, [number, number]> = {
         23.976: [24000, 1001],
@@ -141,26 +162,27 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
         59.94:  [60000, 1001],
       };
       
-      let durationMs = parseFloat(general.Duration || '0');
-      // MediaInfo.js version check for duration unit (some versions return seconds)
-      if (durationMs > 0 && durationMs < 10000 && file.size > 10 * 1024 * 1024) {
-        durationMs *= 1000;
-      }
-      
-      let totalFrames = 0;
-      const matchedFraction = Object.entries(FPS_FRACTIONS).find(([key]) => Math.abs(parseFloat(key) - rawFps) < 0.01);
-      
-      if (matchedFraction) {
-        const [num, den] = matchedFraction[1];
-        totalFrames = Math.floor((durationMs / 1000) * num / den);
-      } else {
-        totalFrames = Math.floor((durationMs / 1000) * rawFps);
+      if (totalFrames === 0) {
+        let durationMs = parseFloat(general.Duration || video.Duration || '0');
+        // MediaInfo.js version check for duration unit (some versions return seconds)
+        if (durationMs > 0 && durationMs < 10000 && file.size > 10 * 1024 * 1024) {
+          durationMs *= 1000;
+        }
+        
+        const matchedFraction = Object.entries(FPS_FRACTIONS).find(([key]) => Math.abs(parseFloat(key) - rawFps) < 0.01);
+        if (matchedFraction) {
+          const [num, den] = matchedFraction[1];
+          totalFrames = Math.round((durationMs / 1000) * num / den);
+        } else {
+          totalFrames = Math.round((durationMs / 1000) * rawFps);
+        }
       }
 
-      const hours = Math.floor(durationMs / 3600000);
-      const minutes = Math.floor((durationMs % 3600000) / 60000);
-      const seconds = Math.floor((durationMs % 60000) / 1000);
-      const frameOfSecond = totalFrames % Math.round(rawFps);
+      // Recalculate time components from total frames
+      const durationStr = framesToTimecode(totalFrames, rawFps);
+      
+      const startFrames = timecodeToFrames(startTimecodeStr, rawFps);
+      const calculatedEndTimecode = framesToTimecode(startFrames + totalFrames, rawFps);
 
       return {
         id: Math.random().toString(36).substr(2, 9),
@@ -170,9 +192,9 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
         container: general.Format || file.name.split('.').pop()?.toUpperCase() || 'N/A',
         resolution: video.Width ? `${video.Width}x${video.Height}` : 'N/A',
         aspectRatio: video.DisplayAspectRatio_String || (video.Width ? calculateAspectRatio(parseInt(video.Width), parseInt(video.Height)) : 'N/A'),
-        duration: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${frameOfSecond.toString().padStart(2, '0')}`,
-        startTimecode,
-        endTimecode,
+        duration: durationStr,
+        startTimecode: startTimecodeStr,
+        endTimecode: calculatedEndTimecode,
         codec: codecName,
         bitrate: general.OverallBitRate ? `${(parseFloat(general.OverallBitRate) / 1000000).toFixed(2)} Mbps` : 'N/A',
         fps: video.FrameRate || 'N/A',
@@ -736,11 +758,11 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
                                         </div>
                                         <div className="flex justify-between items-center">
                                           <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Modified</span>
-                                          <span className="text-[10px] font-bold text-[var(--text-main)]">{new Date(file.lastModified).toLocaleDateString()}</span>
+                                          <span className="text-[10px] font-bold text-[var(--text-main)] text-right">{new Date(file.lastModified).toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between items-center">
                                           <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Created</span>
-                                          <span className="text-[10px] font-bold text-[var(--text-main)]">{new Date(file.creationDate).toLocaleDateString()}</span>
+                                          <span className="text-[10px] font-bold text-[var(--text-main)] text-right">{new Date(file.creationDate).toLocaleString()}</span>
                                         </div>
                                       </div>
                                     </div>

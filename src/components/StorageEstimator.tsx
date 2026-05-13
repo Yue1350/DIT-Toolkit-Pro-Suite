@@ -237,7 +237,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
 
             <div className="h-full flex flex-col min-h-0">
                <div className="p-6 lg:p-8 rounded-3xl h-full glass border border-[var(--border)] flex flex-col min-h-0 overflow-hidden shadow-2xl relative">
-                  <div className="flex flex-col items-center justify-start space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-1 relative z-10 pt-4 px-4">
+                  <div className="flex flex-col items-center justify-center space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-1 relative z-10 px-4">
                       {/* Condensed Header */}
                       <div className="flex flex-col items-center text-center pb-0">
                        <p className="label-micro text-[var(--text-dim)] mb-0 opacity-60">Estimated Export Footprint</p>
@@ -365,33 +365,17 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                                         {/* Buffer */}
                                         <motion.circle cx="200" cy="200" r="145" fill="none" stroke="#a855f7" strokeWidth="34" strokeDasharray={2*Math.PI*145} strokeDashoffset={(2*Math.PI*145)*(1-getNormalizedRatio(bufferSize))} style={{ rotate: `${currentRotation*360}deg`, transformOrigin: 'center' }} onMouseEnter={() => setHoveredSegment('buffer')} onMouseLeave={() => setHoveredSegment(null)} className={`transition-all duration-300 cursor-pointer ${hoveredSegment==='buffer'?'stroke-[44]':'opacity-40'}`} />
                                         
-                                        {/* Overflow Red Zone (Outer highlight) */}
+                                        {/* Overflow Red Border (Whole circle) */}
                                         {isOverflow && (
                                           <motion.circle 
-                                            cx="200" cy="200" r="162" 
+                                            cx="200" cy="200" r="165" 
                                             fill="none" 
                                             stroke="#ef4444" 
-                                            strokeWidth="6" 
-                                            strokeLinecap="round"
-                                            strokeDasharray={2*Math.PI*162} 
-                                            strokeDashoffset={(2*Math.PI*162) * (1 - (overflowAmount / visMax))}
-                                            style={{ rotate: `${(driveCapacity / visMax) * 360}deg`, transformOrigin: 'center' }}
-                                            className="drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                            strokeWidth="2" 
                                             initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                          />
-                                        )}
-
-                                        {/* Critical Threshold Line */}
-                                        {driveCapacity > 0 && (
-                                          <motion.line 
-                                            x1="200" y1="55" x2="200" y2="40" 
-                                            stroke={isOverflow ? "#ef4444" : "var(--accent)"} 
-                                            strokeWidth="4" 
-                                            strokeLinecap="round"
-                                            style={{ rotate: `${(driveCapacity / visMax) * 360}deg`, transformOrigin: 'center' }}
-                                            animate={isOverflow ? { opacity: [1, 0.5, 1], scaleY: [1, 1.2, 1] } : {}}
-                                            transition={{ duration: 1, repeat: Infinity }}
+                                            animate={{ opacity: [0.3, 0.8, 0.3] }}
+                                            transition={{ duration: 2, repeat: Infinity }}
+                                            className="drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]"
                                           />
                                         )}
                                       </>
