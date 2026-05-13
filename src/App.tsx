@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [page, setPage] = useState('home');
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [isResizing, setIsResizing] = useState(false);
 

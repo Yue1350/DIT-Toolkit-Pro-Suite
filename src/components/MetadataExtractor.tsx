@@ -24,17 +24,18 @@ import ToolSidebar from './ToolSidebar';
 interface VideoMetadata {
   id: string;
   name: string;
+  path: string;
   size: number;
-  type: string;
-  extension: string;
   container: string;
   resolution: string;
   aspectRatio: string;
-  duration: string;
-  durationSeconds: number;
+  duration: string;        // HH:MM:SS:FF
+  startTimecode: string | null;
+  endTimecode: string | null;
   codec: string;
   bitrate: string;
   fps: string;
+  bitDepth: string;
   lastModified: number;
   creationDate: number;
 }
@@ -43,6 +44,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [files, setFiles] = useState<VideoMetadata[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const calculateAspectRatio = (w: number, h: number) => {
     const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
@@ -50,7 +52,118 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
     return `${w / r}:${h / r}`;
   };
 
-  const extractMetadata = async (file: File): Promise<VideoMetadata> => {
+  const analyzeVideoWithMediaInfo = async (file: File, customPath?: string): Promise<VideoMetadata> => {
+    // @ts-ignore
+    const MediaInfoModule = await import('mediainfo.js');
+    const MediaInfo = MediaInfoModule.default;
+    
+    let mediainfo: any = null;
+    try {
+      mediainfo = await MediaInfo({
+        format: 'object',
+        locateFile: (path: string) => `https://cdn.jsdelivr.net/npm/mediainfo.js/dist/${path}`
+      });
+
+      const getSize = () => file.size;
+      const readChunk = (chunkSize: number, offset: number) =>
+        new Promise<Uint8Array>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event: any) => resolve(new Uint8Array(event.target.result));
+          reader.onerror = reject;
+          reader.readAsArrayBuffer(file.slice(offset, offset + chunkSize));
+        });
+
+      const result = await mediainfo.analyzeData(getSize, readChunk);
+      console.log('MediaInfo Raw JSON:', result);
+
+      const general = result.media.track.find((t: any) => t['@type'] === 'General') || {};
+      const video = result.media.track.find((t: any) => t['@type'] === 'Video') || {};
+      const tracks = result.media.track;
+
+      // 1. Timecode Logic - Check 'Time code' and 'Other'
+      const timecodeTrack = tracks.find((t: any) => t['@type'] === 'Time code' || t['@type'] === 'Other') ?? {};
+      const startTimecode = timecodeTrack.TimeCode_FirstFrame ?? general.TimeCode_FirstFrame ?? null;
+      const endTimecode = timecodeTrack.TimeCode_LastFrame || null;
+
+      // 2. ProRes Codec Mapping
+      const proResMap: Record<string, string> = {
+        'apcn': 'Apple ProRes 422',
+        'apch': 'Apple ProRes 422 HQ',
+        'apcs': 'Apple ProRes 422 LT',
+        'apco': 'Apple ProRes 422 Proxy',
+        'ap4h': 'Apple ProRes 4444',
+        'ap4x': 'Apple ProRes 4444 XQ',
+      };
+      
+      const codecId = video.CodecID?.toLowerCase();
+      const codecName = video.Format_Commercial || proResMap[codecId] || video.Format || 'UNKNOWN PRO CODEC';
+      
+      // 3. Bit Depth Fallback
+      const getBitDepthString = (vTrack: any, name: string) => {
+        if (vTrack.BitDepth) return `${vTrack.BitDepth}-bit`;
+        if (name.includes('4444')) return '12-bit';
+        if (name.includes('ProRes')) return '10-bit';
+        if (name.includes('HEVC')) return '10-bit';
+        return '8-bit';
+      };
+      const bitDepth = getBitDepthString(video, codecName);
+
+      // 4. FPS Precision with fractions
+      const rawFps = parseFloat(video.FrameRate || '23.976');
+      const FPS_FRACTIONS: Record<number, [number, number]> = {
+        23.976: [24000, 1001],
+        29.97:  [30000, 1001],
+        59.94:  [60000, 1001],
+      };
+      
+      let durationMs = parseFloat(general.Duration || '0');
+      // MediaInfo.js version check for duration unit (some versions return seconds)
+      if (durationMs > 0 && durationMs < 10000 && file.size > 10 * 1024 * 1024) {
+        durationMs *= 1000;
+      }
+      
+      let totalFrames = 0;
+      const matchedFraction = Object.entries(FPS_FRACTIONS).find(([key]) => Math.abs(parseFloat(key) - rawFps) < 0.01);
+      
+      if (matchedFraction) {
+        const [num, den] = matchedFraction[1];
+        totalFrames = Math.floor((durationMs / 1000) * num / den);
+      } else {
+        totalFrames = Math.floor((durationMs / 1000) * rawFps);
+      }
+
+      const hours = Math.floor(durationMs / 3600000);
+      const minutes = Math.floor((durationMs % 3600000) / 60000);
+      const seconds = Math.floor((durationMs % 60000) / 1000);
+      const frameOfSecond = totalFrames % Math.round(rawFps);
+
+      return {
+        id: Math.random().toString(36).substr(2, 9),
+        name: file.name,
+        path: customPath || (file as any).webkitRelativePath || file.name,
+        size: file.size,
+        container: general.Format || file.name.split('.').pop()?.toUpperCase() || 'UNKNOWN',
+        resolution: video.Width ? `${video.Width}x${video.Height}` : 'UNKNOWN',
+        aspectRatio: video.DisplayAspectRatio_String || (video.Width ? calculateAspectRatio(parseInt(video.Width), parseInt(video.Height)) : '16:9'),
+        duration: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${frameOfSecond.toString().padStart(2, '0')}`,
+        startTimecode,
+        endTimecode,
+        codec: codecName,
+        bitrate: general.OverallBitRate ? `${(parseFloat(general.OverallBitRate) / 1000000).toFixed(2)} Mbps` : 'UNKNOWN',
+        fps: video.FrameRate || '23.976',
+        bitDepth,
+        lastModified: file.lastModified,
+        creationDate: (file as any).lastModifiedDate?.getTime() || file.lastModified
+      };
+    } catch (err) {
+      console.error('MediaInfo error:', err);
+      return extractMetadataFallback(file, customPath);
+    } finally {
+      if (mediainfo) mediainfo.close();
+    }
+  };
+
+  const extractMetadataFallback = async (file: File, customPath?: string): Promise<VideoMetadata> => {
     return new Promise((resolve) => {
       const video = document.createElement('video');
       video.preload = 'metadata';
@@ -62,31 +175,26 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
         const durationSec = video.duration;
         const minutes = Math.floor(durationSec / 60);
         const seconds = Math.floor(durationSec % 60);
+        const bitrateMbps = (file.size * 8) / (durationSec * 1000000);
         
-        // Bitrate calculation
-        const bitrateBps = (file.size * 8) / durationSec;
-        const bitrateMbps = (bitrateBps / 1000000);
+        let detectedCodec = 'H.264 / AVC';
+        if (bitrateMbps > 150) detectedCodec = 'ProRes / High-Res (EST)';
         
-        // Codec Heuristic Detection
-        let detectedCodec = 'H.264 / AVC'; // Browser default usually
-        if (bitrateMbps > 150) detectedCodec = 'ProRes / High-Res';
-        if (container === 'MOV' && file.size > 500 * 1024 * 1024) detectedCodec = 'ProRes / DNxHR';
-        if (file.type.includes('hevc')) detectedCodec = 'H.265 / HEVC';
-
         resolve({
           id: Math.random().toString(36).substr(2, 9),
           name: file.name,
+          path: customPath || file.name,
           size: file.size,
-          type: file.type,
-          extension,
           container,
           resolution: `${video.videoWidth}x${video.videoHeight}`,
           aspectRatio: calculateAspectRatio(video.videoWidth, video.videoHeight),
-          duration: `${minutes}:${seconds.toString().padStart(2, '0')}`,
-          durationSeconds: durationSec,
+          duration: `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:00`,
+          startTimecode: null,
+          endTimecode: null,
           codec: detectedCodec,
           bitrate: `${bitrateMbps.toFixed(2)} Mbps`,
-          fps: '23.98',
+          fps: '23.976',
+          bitDepth: '8-bit',
           lastModified: file.lastModified,
           creationDate: (file as any).lastModifiedDate?.getTime() || file.lastModified
         });
@@ -94,31 +202,21 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
 
       video.onerror = () => {
         window.URL.revokeObjectURL(video.src);
-        
-        // Advanced naming-based codec detection
-        let detectedCodec = 'Unknown Codec';
-        const fileName = file.name.toUpperCase();
-        if (fileName.includes('PRORES')) detectedCodec = 'Apple ProRes';
-        else if (fileName.includes('H265') || fileName.includes('HEVC')) detectedCodec = 'H.265 / HEVC';
-        else if (fileName.includes('DNX')) detectedCodec = 'Avid DNxHR';
-        
-        // Deep Fallback: Infer what we can from file properties
-        const isLikely4K = file.size > 1000 * 1000 * 1000 * 2; // Heuristic: >2GB is often 4K+ for short clips
-        
         resolve({
           id: Math.random().toString(36).substr(2, 9),
           name: file.name,
+          path: customPath || file.name,
           size: file.size,
-          type: file.type,
-          extension,
           container,
-          resolution: isLikely4K ? '4K+ (RAW/PR)' : 'HD+ (RAW/PR)',
-          aspectRatio: '16:9 (EST)',
-          duration: 'PROFESSIONAL',
-          durationSeconds: 0,
-          codec: detectedCodec,
-          bitrate: 'VBR HIGH',
-          fps: '23.98/VAR',
+          resolution: 'UNKNOWN',
+          aspectRatio: '16:9',
+          duration: '00:00:00:00',
+          startTimecode: null,
+          endTimecode: null,
+          codec: 'Unknown Codec',
+          bitrate: '0 Mbps',
+          fps: '23.976',
+          bitDepth: '8-bit',
           lastModified: file.lastModified,
           creationDate: (file as any).lastModifiedDate?.getTime() || file.lastModified
         });
@@ -127,13 +225,57 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
     });
   };
 
+  const scanEntries = async (entries: FileSystemEntry[]): Promise<{ file: File, path: string }[]> => {
+    let results: { file: File, path: string }[] = [];
+    
+    for (const entry of entries) {
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
+        // Check if it's a video file or common raw format
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        const videoExtensions = ['mov', 'mp4', 'mxf', 'r3d', 'arri', 'ari', 'mkv', 'avi'];
+        if (videoExtensions.includes(ext || '') || file.type.startsWith('video/')) {
+          results.push({ file, path: entry.fullPath.startsWith('/') ? entry.fullPath.substring(1) : entry.fullPath });
+        }
+      } else if (entry.isDirectory) {
+        const directoryReader = (entry as FileSystemDirectoryEntry).createReader();
+        const dirEntries = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+          directoryReader.readEntries(resolve, reject);
+        });
+        const subResults = await scanEntries(dirEntries);
+        results = [...results, ...subResults];
+      }
+    }
+    return results;
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsProcessing(true);
+    
+    const items = Array.from(e.dataTransfer.items);
+    const entryItems = items.map(item => (item as any).webkitGetAsEntry()).filter(entry => entry !== null) as FileSystemEntry[];
+    
+    try {
+      const discovered = await scanEntries(entryItems);
+      const processed = await Promise.all(discovered.map(item => analyzeVideoWithMediaInfo(item.file, item.path)));
+      setFiles(prev => [...prev, ...processed]);
+    } catch (err) {
+      console.error('Scan error:', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     setIsProcessing(true);
     const newFiles = Array.from(e.target.files) as File[];
-    const processed = await Promise.all(newFiles.map(file => extractMetadata(file)));
+    const processed = await Promise.all(newFiles.map(file => analyzeVideoWithMediaInfo(file, (file as any).webkitRelativePath || file.name)));
     setFiles(prev => [...prev, ...processed]);
     setIsProcessing(false);
+    // Reset input
+    e.target.value = '';
   };
 
   const removeFile = (id: string) => {
@@ -152,23 +294,22 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
       f.name,
       f.container,
       f.codec,
+      f.bitDepth,
       f.resolution,
-      f.aspectRatio,
       f.fps,
-      f.bitrate,
+      f.startTimecode || '--:--:--:--',
       f.duration,
       formatSize(f.size),
-      new Date(f.lastModified).toLocaleDateString(),
-      new Date(f.creationDate).toLocaleDateString()
+      new Date(f.lastModified).toLocaleDateString()
     ]);
 
     autoTable(doc, {
       startY: 40,
-      head: [['Filename', 'Format', 'Codec', 'Resolution', 'Aspect', 'FPS', 'Bitrate', 'Length', 'Weight', 'Modified', 'Created']],
+      head: [['Filename', 'Format', 'Codec', 'Depth', 'Resolution', 'FPS', 'Start TC', 'Length', 'Weight', 'Modified']],
       body: tableData,
       theme: 'grid',
       headStyles: { fillColor: [24, 119, 242] },
-      styles: { fontSize: 8 }
+      styles: { fontSize: 7 }
     });
 
     doc.save('DIT_Full_Metadata_Report.pdf');
@@ -177,21 +318,25 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
   const exportCSV = () => {
     if (files.length === 0) return;
     
-    const headers = ['Filename', 'Container', 'Codec', 'Resolution', 'Aspect Ratio', 'FPS', 'Bitrate', 'Duration', 'Size', 'Last Modified', 'Creation Date'];
+    const headers = ['Filename', 'Container', 'Codec', 'Bit Depth', 'Resolution', 'Aspect Ratio', 'FPS', 'Bitrate', 'Start TC', 'End TC', 'Duration', 'Size', 'Last Modified', 'Creation Date', 'Path'];
     const csvContent = [
       headers.join(','),
       ...files.map(f => [
         `"${f.name}"`,
         `"${f.container}"`,
         `"${f.codec}"`,
+        `"${f.bitDepth}"`,
         `"${f.resolution}"`,
         `"${f.aspectRatio}"`,
         `"${f.fps}"`,
         `"${f.bitrate}"`,
+        `"${f.startTimecode || ''}"`,
+        `"${f.endTimecode || ''}"`,
         `"${f.duration}"`,
         `"${f.size}"`,
         `"${new Date(f.lastModified).toISOString()}"`,
-        `"${new Date(f.creationDate).toISOString()}"`
+        `"${new Date(f.creationDate).toISOString()}"`,
+        `"${f.path}"`
       ].join(','))
     ].join('\n');
 
@@ -224,7 +369,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
         
         // Simple CSV parser for quoted values
         const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-        if (!values || values.length < 11) continue;
+        if (!values || values.length < 15) continue;
 
         const cleanValues = values.map(v => v.replace(/^"|"$/g, ''));
 
@@ -233,17 +378,18 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
           name: cleanValues[0],
           container: cleanValues[1],
           codec: cleanValues[2],
-          resolution: cleanValues[3],
-          aspectRatio: cleanValues[4],
-          fps: cleanValues[5],
-          bitrate: cleanValues[6],
-          duration: cleanValues[7],
-          durationSeconds: 0,
-          extension: cleanValues[0].split('.').pop() || 'MOV',
-          size: parseInt(cleanValues[8]) || 0,
-          type: 'video/imported',
-          lastModified: Date.parse(cleanValues[9]) || Date.now(),
-          creationDate: Date.parse(cleanValues[10]) || Date.now()
+          bitDepth: cleanValues[3],
+          resolution: cleanValues[4],
+          aspectRatio: cleanValues[5],
+          fps: cleanValues[6],
+          bitrate: cleanValues[7],
+          startTimecode: cleanValues[8] || null,
+          endTimecode: cleanValues[9] || null,
+          duration: cleanValues[10],
+          size: parseInt(cleanValues[11]) || 0,
+          lastModified: Date.parse(cleanValues[12]) || Date.now(),
+          creationDate: Date.parse(cleanValues[13]) || Date.now(),
+          path: cleanValues[14] || cleanValues[0]
         });
       }
       setFiles(prev => [...prev, ...newFiles]);
@@ -297,7 +443,7 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
           </div>
        </div>
 
-      <div className="p-8 flex flex-col gap-8 h-full overflow-hidden relative z-10 pt-24 max-w-[2200px] mx-auto w-full">
+      <div className="p-8 flex flex-col gap-8 h-full overflow-hidden relative z-10 pt-24 max-w-[1600px] mx-auto w-full">
 
         <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-8 items-stretch flex-1 min-h-0 pb-12 overflow-hidden">
           
@@ -310,20 +456,31 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
                 </div>
 
                 <div className="relative flex-1 group">
+                  <div 
+                    className="absolute inset-0 z-20 cursor-pointer"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDrop}
+                    onClick={() => document.getElementById('file-upload-input')?.click()}
+                  />
                   <input 
                     type="file" 
+                    id="file-upload-input"
                     multiple 
+                    // @ts-ignore
+                    webkitdirectory=""
+                    // @ts-ignore
+                    directory=""
                     accept="video/*"
                     onChange={onFileChange}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                    className="hidden"
                   />
                   <div className="h-full border-2 border-dashed border-[var(--border)] rounded-2xl flex flex-col items-center justify-center p-8 text-center space-y-4 group-hover:border-[var(--accent)] transition-all bg-[var(--bg-shell)]/30 backdrop-blur-sm">
                     <div className="p-4 rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
                       <Upload className="w-8 h-8" />
                     </div>
                     <div className="space-y-1">
-                      <p className="text-sm font-bold text-[var(--text-main)] italic uppercase tracking-wider">Drop Video Files</p>
-                      <p className="text-[10px] text-[var(--text-dim)]">Supports PRORES, BRAW, R3D (Proxy), MP4</p>
+                      <p className="text-sm font-bold text-[var(--text-main)] italic uppercase tracking-wider">Drop Files or Folders</p>
+                      <p className="text-[10px] text-[var(--text-dim)]">Supports PRORES, BRAW, R3D, MP4 Recursive</p>
                     </div>
                   </div>
                 </div>
@@ -385,87 +542,165 @@ export default function MetadataExtractor({ setPage, isDark, toggleTheme }: { se
                 </div>
                 <button 
                   onClick={() => setFiles([])}
-                  className="text-[10px] font-bold text-red-500 hover:text-red-600 uppercase tracking-widest transition-colors flex items-center gap-1.5"
+                  className="h-9 px-4 glass-button text-[10px] font-bold hover:text-red-400 transition-colors flex items-center gap-2"
                 >
-                  <Trash2 className="w-3 h-3" /> Purge Memory
+                  <Trash2 className="w-3.5 h-3.5 text-red-500" /> CLEAR
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar">
                 {files.length > 0 ? (
-                  <div className="space-y-4 pr-2">
-                    {files.map((file) => (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        key={file.id} 
-                        className="flex flex-col p-6 glass border border-[var(--border)] rounded-2xl hover:bg-[var(--bg-shell)]/30 transition-all group"
-                      >
-                        <div className="flex items-center justify-between mb-6">
-                          <div className="flex items-center gap-6 flex-1 min-w-0">
-                            <div className="w-12 h-12 rounded-full glass border border-[var(--border)] bg-[var(--bg-shell)] flex items-center justify-center text-[var(--accent-text)] shadow-inner">
-                              <FileVideo className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <h4 className="text-[14px] font-black text-[var(--text-main)] truncate italic uppercase tracking-wider">{file.name}</h4>
-                              <div className="flex items-center gap-3 text-[10px] font-mono text-[var(--text-micro)] uppercase">
-                                <span>{formatSize(file.size)}</span>
-                                <span className="w-1 h-1 rounded-full bg-[var(--border)]" />
-                                <span className="text-[var(--accent-text)]">{file.codec}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => removeFile(file.id)}
-                            className="p-2 text-[var(--text-micro)] hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                  <div className="min-w-[800px]">
+                    <div className="grid grid-cols-[1fr_120px_120px_100px_180px_100px_100px] gap-4 px-6 py-4 border-b border-[var(--border)] label-micro text-[10px] text-[var(--text-dim)] uppercase tracking-widest font-bold sticky top-0 bg-[var(--bg-shell)]/80 backdrop-blur-md z-20">
+                      <div>Filename</div>
+                      <div>Start TC</div>
+                      <div>Length</div>
+                      <div>Resolution</div>
+                      <div>Codec</div>
+                      <div>Bit Depth</div>
+                      <div>FPS</div>
+                    </div>
+                    
+                    <div className="flex flex-col">
+                      {files.map((file) => (
+                        <div key={file.id} className="border-b border-[var(--border)]/30">
+                          <motion.div 
+                            onClick={() => setExpandedId(expandedId === file.id ? null : file.id)}
+                            className={`grid grid-cols-[1fr_120px_120px_100px_180px_100px_100px] gap-4 px-6 py-4 items-center cursor-pointer transition-all hover:bg-[var(--accent-soft)]/20 ${expandedId === file.id ? 'bg-[var(--accent-soft)]/30' : ''}`}
                           >
-                             <X className="w-4 h-4" />
-                          </button>
-                        </div>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <FileVideo className={`w-4 h-4 shrink-0 ${expandedId === file.id ? 'text-[var(--accent)]' : 'text-[var(--text-dim)]'}`} />
+                              <span className="text-xs font-bold text-[var(--text-main)] truncate italic uppercase tracking-wider">{file.name}</span>
+                            </div>
+                            <div className="text-[11px] font-mono font-bold text-[var(--text-main)]">{file.startTimecode || '—'}</div>
+                            <div className="text-[11px] font-mono font-bold text-[var(--accent)] italic">{file.duration}</div>
+                            <div className="text-[11px] font-mono font-bold text-[var(--text-main)] opacity-70">{file.resolution}</div>
+                            <div>
+                              <span className="px-2 py-0.5 rounded-md bg-[var(--bg-shell)] border border-[var(--border)] text-[9px] font-black text-[var(--accent-text)] uppercase tracking-tighter truncate block w-fit">
+                                {file.codec}
+                              </span>
+                            </div>
+                            <div className="text-[11px] font-bold text-[var(--text-dim)] uppercase">{file.bitDepth}</div>
+                            <div className="text-[11px] font-bold text-[var(--text-dim)]">{file.fps}</div>
+                          </motion.div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6 pt-6 border-t border-[var(--border)]/50">
-                           <div className="space-y-1.5">
-                              <p className="flex items-center gap-1.5 label-micro text-[10px] text-[var(--text-micro)] uppercase opacity-60">
-                                 <Layers className="w-3 h-3" /> Container
-                              </p>
-                              <p className="text-[13px] font-black italic text-[var(--text-main)] truncate text-[var(--accent-text)]">{file.container}</p>
-                           </div>
-                           <div className="space-y-1.5">
-                              <p className="flex items-center gap-1.5 label-micro text-[10px] text-[var(--text-micro)] uppercase opacity-60">
-                                 <Settings className="w-3 h-3" /> Codec
-                              </p>
-                              <p className="text-[13px] font-bold italic text-[var(--text-main)] truncate">{file.codec}</p>
-                           </div>
-                           <div className="space-y-1.5">
-                              <p className="flex items-center gap-1.5 label-micro text-[10px] text-[var(--text-micro)] uppercase opacity-60">
-                                 <Zap className="w-3 h-3" /> Rate / Aspect
-                              </p>
-                              <p className="text-[13px] font-mono font-bold text-[var(--text-main)]">{file.fps} @ {file.aspectRatio}</p>
-                           </div>
-                           <div className="space-y-1.5">
-                              <p className="flex items-center gap-1.5 label-micro text-[10px] text-[var(--text-micro)] uppercase opacity-60">
-                                 <Settings className="w-3 h-3" /> Bitrate
-                              </p>
-                              <p className="text-[13px] font-mono font-bold text-[var(--accent-text)]">{file.bitrate}</p>
-                           </div>
-                           <div className="space-y-1.5">
-                              <p className="flex items-center gap-1.5 label-micro text-[10px] text-[var(--text-micro)] uppercase opacity-60">
-                                 <Thermometer className="w-3 h-3" /> Timestamps
-                              </p>
-                              <p className="text-[10px] font-bold text-[var(--text-dim)]">
-                                M: {new Date(file.lastModified).toLocaleDateString()}
-                              </p>
-                              <p className="text-[10px] font-bold text-[var(--text-micro)]">
-                                C: {new Date(file.creationDate).toLocaleDateString()}
-                              </p>
-                           </div>
-                           <div className="space-y-1.5">
-                              <p className="label-micro text-[10px] text-[var(--text-micro)] uppercase opacity-60">Length</p>
-                              <p className="text-[13px] font-black font-mono text-[var(--accent-text)]">{file.duration}</p>
-                           </div>
+                          <AnimatePresence>
+                            {expandedId === file.id && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden bg-[var(--bg-shell)]/40"
+                              >
+                                <div className="p-8 pb-10">
+                                  {/* Detail Header */}
+                                  <div className="flex items-center justify-between mb-8">
+                                    <div className="flex items-center gap-4">
+                                      <div className="w-10 h-10 rounded-full bg-[var(--accent-soft)] flex items-center justify-center text-[var(--accent-text)]">
+                                        <FileVideo className="w-5 h-5" />
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <h4 className="text-sm font-black text-[var(--text-main)] italic uppercase">{file.name}</h4>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">{formatSize(file.size)}</span>
+                                          <span className="w-1 h-1 rounded-full bg-[var(--border)]" />
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">{file.container}</span>
+                                          <span className="px-1.5 py-0.5 rounded bg-[var(--accent)]/10 text-[8px] font-black text-[var(--accent-text)] uppercase">{file.codec}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button 
+                                      onClick={() => removeFile(file.id)}
+                                      className="h-8 px-3 rounded-lg border border-red-500/20 text-red-500 hover:bg-red-500/10 transition-colors text-[9px] font-black uppercase tracking-widest flex items-center gap-2"
+                                    >
+                                      <X className="w-3.5 h-3.5" /> Remove
+                                    </button>
+                                  </div>
+
+                                  <div className="grid grid-cols-4 gap-0 divide-x divide-[var(--border)]/50">
+                                    {/* TIME SECTION */}
+                                    <div className="px-6 first:pl-0">
+                                      <h5 className="label-micro text-[10px] text-[var(--accent)] mb-4 uppercase tracking-widest font-black">Time</h5>
+                                      <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Start TC</span>
+                                          <span className="text-xs font-mono font-bold text-[var(--text-main)]">{file.startTimecode || '—'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">End TC</span>
+                                          <span className="text-xs font-mono font-bold text-[var(--text-main)]">{file.endTimecode || '—'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Length</span>
+                                          <span className="text-xs font-mono font-bold text-[var(--accent)]">{file.duration}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* VIDEO SECTION */}
+                                    <div className="px-6">
+                                      <h5 className="label-micro text-[10px] text-[var(--accent)] mb-4 uppercase tracking-widest font-black">Video</h5>
+                                      <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Resolution</span>
+                                          <span className="text-xs font-bold text-[var(--text-main)]">{file.resolution}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Framerate</span>
+                                          <span className="text-xs font-bold text-[var(--text-main)]">{file.fps} FPS</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Aspect Ratio</span>
+                                          <span className="text-xs font-bold text-[var(--text-main)]">{file.aspectRatio}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* QUALITY SECTION */}
+                                    <div className="px-6">
+                                      <h5 className="label-micro text-[10px] text-[var(--accent)] mb-4 uppercase tracking-widest font-black">Quality</h5>
+                                      <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Codec</span>
+                                          <span className="text-xs font-bold text-[var(--text-main)]">{file.codec}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Bit Depth</span>
+                                          <span className="text-xs font-bold text-[var(--text-main)]">{file.bitDepth}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Bitrate</span>
+                                          <span className="text-xs font-mono font-bold text-[var(--accent)]">{file.bitrate}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* FILE SECTION */}
+                                    <div className="px-6 last:pr-0">
+                                      <h5 className="label-micro text-[10px] text-[var(--accent)] mb-4 uppercase tracking-widest font-black">File</h5>
+                                      <div className="space-y-3">
+                                        <div className="flex justify-between items-center gap-4">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)] shrink-0">Path</span>
+                                          <span className="text-[10px] font-bold text-[var(--text-main)] truncate text-right">{file.path}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Modified</span>
+                                          <span className="text-[10px] font-bold text-[var(--text-main)]">{new Date(file.lastModified).toLocaleDateString()}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] uppercase font-bold text-[var(--text-dim)]">Created</span>
+                                          <span className="text-[10px] font-bold text-[var(--text-main)]">{new Date(file.creationDate).toLocaleDateString()}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
-                      </motion.div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center opacity-20 space-y-4 text-center">

@@ -434,7 +434,7 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
           </div>
        </div>
 
-      <div className="p-8 flex flex-col gap-8 h-full overflow-hidden relative z-10 pt-24 max-w-[1920px] mx-auto w-full">
+      <div className="p-8 flex flex-col gap-8 h-full overflow-hidden relative z-10 pt-24 max-w-[1600px] mx-auto w-full">
 
         <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-8 items-stretch flex-1 min-h-0 pb-12 overflow-hidden">
           {/* Left: Configuration */}
@@ -632,7 +632,7 @@ export default function FolderGenerator({ setPage, isDark, toggleTheme }: { setP
                     onClick={clearPreview}
                     className="h-9 px-4 glass-button text-[10px] font-bold hover:text-red-400 transition-colors flex items-center gap-2"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> CLEAR
+                    <Trash2 className="w-3.5 h-3.5 text-red-500" /> CLEAR
                   </button>
                   <button 
                     onClick={downloadZip}

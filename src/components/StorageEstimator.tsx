@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { HardDrive, Sun, Moon, LayoutDashboard, AlertCircle, Clock, Video, Music, ShieldCheck } from 'lucide-react';
+import { HardDrive, Sun, Moon, LayoutDashboard, AlertCircle, Clock, Video, Music, ShieldCheck, X } from 'lucide-react';
 import ToolSidebar from './ToolSidebar';
 
 export default function StorageEstimator({ setPage, isDark, toggleTheme }: { setPage: (p: string) => void, isDark?: boolean, toggleTheme?: () => void }) {
@@ -151,7 +151,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
            </div>
        </div>
 
-      <div className="p-8 flex flex-col gap-8 h-full relative z-10 pt-24 max-w-[1920px] mx-auto w-full overflow-hidden">
+      <div className="p-8 flex flex-col gap-8 h-full relative z-10 pt-24 max-w-[1600px] mx-auto w-full overflow-hidden">
          <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-8 items-stretch flex-1 min-h-0 pb-12 overflow-hidden">
             <div className="h-full flex flex-col min-h-0">
                <div className="p-10 rounded-3xl h-full glass border border-[var(--border)] flex flex-col min-h-0 overflow-hidden shadow-2xl relative">
@@ -237,18 +237,18 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
 
             <div className="h-full flex flex-col min-h-0">
                <div className="p-10 rounded-3xl h-full glass border border-[var(--border)] flex flex-col min-h-0 overflow-hidden shadow-2xl relative">
-                  <div className="flex flex-col items-center justify-start space-y-2 overflow-y-auto pr-2 custom-scrollbar flex-1 relative z-10 pt-10">
-                      <div className="flex flex-col items-center text-center">
-                       <p className="label-micro text-[var(--text-dim)] mb-2">Estimated Export Footprint</p>
-                       <div className="flex items-baseline gap-3">
-                         <span className="text-[100px] lg:text-[120px] font-black tracking-tighter text-[var(--text-main)] italic leading-none drop-shadow-2xl">{storageResult.size.toFixed(2)}</span>
-                         <span className="text-3xl font-black text-[var(--accent)] uppercase italic">{storageResult.unit}</span>
+                  <div className="flex flex-col items-center justify-start space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-1 relative z-10 pt-6 px-4">
+                      <div className="flex flex-col items-center text-center pb-2">
+                       <p className="label-micro text-[var(--text-dim)] mb-1">Estimated Export Footprint</p>
+                       <div className="flex items-baseline gap-2">
+                         <span className="text-[80px] lg:text-[100px] font-black tracking-tighter text-[var(--text-main)] italic leading-none drop-shadow-2xl">{storageResult.size.toFixed(2)}</span>
+                         <span className="text-2xl font-black text-[var(--accent)] uppercase italic">{storageResult.unit}</span>
                        </div>
                     </div>
 
-                    <div className="flex flex-col xl:flex-row items-center justify-center gap-16 lg:gap-24 w-full max-w-7xl mx-auto px-10">
+                    <div className="flex flex-col xl:flex-row items-center justify-center gap-10 lg:gap-16 w-full max-w-7xl mx-auto px-6">
                        {/* Left Side Labels */}
-                       <div className="hidden xl:flex flex-col items-start gap-12 w-[220px] shrink-0 pointer-events-none">
+                       <div className="hidden xl:flex flex-col items-start gap-10 w-[200px] shrink-0 pointer-events-none">
                           {targetDriveName && freeSpace > 0 && (
                             <motion.div 
                               animate={{ 
@@ -280,46 +280,34 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                           )}
                        </div>
 
-                        <div className="relative flex items-center justify-center w-full max-w-[380px] lg:max-w-[440px] aspect-square shrink-0">
+                        <div className="relative flex flex-col items-center justify-center w-full max-w-[340px] lg:max-w-[400px] shrink-0">
+                            <div className="relative aspect-square w-full">
                             {!targetDriveName ? (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/5 backdrop-blur-[4px] rounded-full border border-dashed border-white/10 m-8 sm:m-12 overflow-hidden p-6 px-10">
-                               <div className="flex flex-col gap-2 w-full max-w-[160px]">
-                                 <div className="space-y-1">
-                                   <select 
-                                     value={pendingType} 
-                                     onChange={e => setPendingType(e.target.value)}
-                                     className="w-full text-[10px] h-9 rounded-xl bg-black/60 border border-white/10 px-3 text-white font-mono appearance-none cursor-pointer hover:border-[var(--accent)] transition-all outline-none"
-                                   >
-                                     <option>SSD</option>
-                                     <option>NVMe</option>
-                                     <option>RAID 0</option>
-                                     <option>RAID 5</option>
-                                     <option>Card / Media</option>
-                                     <option>Cloud</option>
-                                   </select>
-                                 </div>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none p-4 sm:p-10">
+                               <div className="flex flex-col gap-3 w-full max-w-[220px] pointer-events-auto glass p-6 sm:p-7 rounded-2xl border border-white/10 shadow-2xl">
+                                 <p className="label-micro text-center mb-1 text-[var(--accent)] tracking-widest">Target Drive</p>
                                  <div className="space-y-1">
                                    <select 
                                      value={pendingCapacity} 
                                      onChange={e => setPendingCapacity(Number(e.target.value))}
-                                     className="w-full text-[10px] h-9 rounded-xl bg-black/60 border border-white/10 px-3 text-white font-mono appearance-none cursor-pointer hover:border-[var(--accent)] transition-all outline-none"
+                                     className="w-full text-[11px] h-10 rounded-xl bg-black/60 border border-white/10 px-4 text-white font-mono appearance-none cursor-pointer hover:border-[var(--accent)] transition-all outline-none"
                                    >
-                                     <option value={128}>128 GB</option>
-                                     <option value={256}>256 GB</option>
-                                     <option value={512}>512 GB</option>
-                                     <option value={1000}>1 TB</option>
-                                     <option value={2000}>2 TB</option>
-                                     <option value={4000}>4 TB</option>
-                                     <option value={8000}>8 TB</option>
-                                     <option value={16000}>16 TB</option>
-                                     <option value={32000}>32 TB</option>
+                                     <option value={128} className="bg-[#1a1a1a]">128 GB</option>
+                                     <option value={256} className="bg-[#1a1a1a]">256 GB</option>
+                                     <option value={512} className="bg-[#1a1a1a]">512 GB</option>
+                                     <option value={1000} className="bg-[#1a1a1a]">1 TB</option>
+                                     <option value={2000} className="bg-[#1a1a1a]">2 TB</option>
+                                     <option value={4000} className="bg-[#1a1a1a]">4 TB</option>
+                                     <option value={8000} className="bg-[#1a1a1a]">8 TB</option>
+                                     <option value={16000} className="bg-[#1a1a1a]">16 TB</option>
+                                     <option value={32000} className="bg-[#1a1a1a]">32 TB</option>
                                    </select>
                                  </div>
                                  <button 
-                                   onClick={() => selectPreset(`${pendingType} ${pendingCapacity >= 1000 ? (pendingCapacity/1000) + 'TB' : pendingCapacity + 'GB'}`, pendingCapacity)}
-                                   className="w-full mt-1 h-9 rounded-xl bg-[var(--accent)] text-white text-[9px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-xl border border-white/10"
+                                   onClick={() => selectPreset(`Capacity: ${pendingCapacity >= 1000 ? (pendingCapacity/1000) + 'TB' : pendingCapacity + 'GB'}`, pendingCapacity)}
+                                   className="w-full mt-1 h-10 rounded-xl bg-[var(--accent)] text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-xl border border-white/10"
                                  >
-                                   Initialize
+                                   Initialize Drive
                                  </button>
                                </div>
                             </div>
@@ -334,9 +322,9 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-main)] max-w-[120px] text-center truncate">{targetDriveName}</p>
                                  <button 
                                    onClick={resetDrive}
-                                   className="mt-3 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-[8px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/20 transition-all pointer-events-auto"
+                                   className="mt-4 h-7 px-4 glass-button text-[9px] font-bold tracking-widest text-[var(--text-dim)] hover:text-red-500 transition-all pointer-events-auto"
                                  >
-                                   Remove
+                                   <X className="w-3 h-3 mr-1.5 text-red-500" /> REMOVE DRIVE
                                  </button>
                                </motion.div>
                             </div>
@@ -381,20 +369,22 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                              />
                           </svg>
 
-                          <div className="absolute top-[calc(100%+0.5rem)] left-1/2 -translate-x-1/2 w-full max-w-[280px]">
-                            <div className="p-5 rounded-2xl glass border border-[var(--border)] flex flex-col items-center bg-black/20 shadow-xl">
-                              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--accent)] mb-2">Total Projected Footprint</p>
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-3xl font-black italic text-[var(--text-main)]">
-                                  {totalRequired >= 1000 ? (totalRequired / 1000).toFixed(2) : totalRequired.toFixed(2)}
-                                </span>
-                                <span className="text-xs font-black text-[var(--text-dim)] uppercase">
-                                  {totalRequired >= 1000 ? 'TB' : 'GB'}
-                                </span>
-                              </div>
-                              <p className="text-[8px] font-bold text-[var(--text-dim)] mt-1 uppercase tracking-widest opacity-40">(Includes 20% Safety Buffer)</p>
                             </div>
-                          </div>
+
+                            <div className="w-full max-w-[300px] mt-8 mb-10">
+                              <div className="p-5 rounded-2xl glass border border-[var(--border)] flex flex-col items-center bg-black/20 shadow-xl">
+                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--accent)] mb-2">Total Projected Footprint</p>
+                                <div className="flex items-baseline gap-2">
+                                  <span className="text-3xl font-black italic text-[var(--text-main)]">
+                                    {totalRequired >= 1000 ? (totalRequired / 1000).toFixed(2) : totalRequired.toFixed(2)}
+                                  </span>
+                                  <span className="text-xs font-black text-[var(--text-dim)] uppercase">
+                                    {totalRequired >= 1000 ? 'TB' : 'GB'}
+                                  </span>
+                                </div>
+                                <p className="text-[8px] font-bold text-[var(--text-dim)] mt-1 uppercase tracking-widest opacity-40">(Includes 20% Safety Buffer)</p>
+                              </div>
+                            </div>
 
                           {isOverflow && (
                            <motion.div 
@@ -412,7 +402,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                        </div>
 
                        {/* Right Side Labels */}
-                       <div className="hidden xl:flex flex-col items-end gap-16 w-[220px] shrink-0 pointer-events-none">
+                       <div className="hidden xl:flex flex-col items-end gap-10 w-[200px] shrink-0 pointer-events-none">
                           {(targetDriveName || usedSpace > 0) && (
                             <motion.div 
                               animate={{ 
@@ -478,7 +468,7 @@ export default function StorageEstimator({ setPage, isDark, toggleTheme }: { set
                        </div>
 
                        {/* Mobile/Compact Grid Legend */}
-                       <div className="xl:hidden grid grid-cols-2 gap-x-12 gap-y-8 mt-4 w-full">
+                       <div className="xl:hidden grid grid-cols-2 gap-x-8 gap-y-6 mt-4 w-full px-4 pb-10">
                           {targetDriveName && freeSpace > 0 && (
                             <div className="flex flex-col">
                               <span className={`text-[10px] uppercase font-black tracking-widest ${isOverflow ? 'text-red-500' : 'text-green-500'}`}>
